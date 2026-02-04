@@ -3,6 +3,7 @@
 import { prisma } from '@/lib/db'
 import { getSession } from './auth'
 import { revalidatePath } from 'next/cache'
+import { checkInstructorConflicts } from './instructors'
 
 export async function createClass(data: {
   classTypeId: string
@@ -20,6 +21,13 @@ export async function createClass(data: {
   const startTime = new Date(data.startTime)
   const endTime = new Date(startTime)
   endTime.setMinutes(endTime.getMinutes() + data.durationMinutes)
+
+  const conflict = await checkInstructorConflicts({
+    instructorId: data.instructorId,
+    startTime,
+    endTime,
+  })
+  if (conflict.error) return { error: conflict.error }
 
   const classItem = await prisma.class.create({
     data: {
@@ -66,14 +74,26 @@ export async function updateClass(
     updateData.cancelReason = data.cancelReason || null
   }
 
-  if (data.startTime) {
-    const startTime = new Date(data.startTime)
+  if (data.startTime || data.durationMinutes || data.instructorId) {
+    const classRecord = await prisma.class.findUnique({ where: { id: classId } })
+    if (!classRecord) return { error: 'Class not found' }
+    const startTime = data.startTime ? new Date(data.startTime) : classRecord.startTime
+    const duration = data.durationMinutes ?? ((classRecord.endTime.getTime() - classRecord.startTime.getTime()) / 60000)
+    const endTime = new Date(startTime)
+    endTime.setMinutes(endTime.getMinutes() + duration)
+
+    const instructorId = data.instructorId ?? classRecord.instructorId
+
+    const conflict = await checkInstructorConflicts({
+      instructorId,
+      startTime,
+      endTime,
+      classId,
+    })
+    if (conflict.error) return { error: conflict.error }
+
     updateData.startTime = startTime
-    if (data.durationMinutes) {
-      const endTime = new Date(startTime)
-      endTime.setMinutes(endTime.getMinutes() + data.durationMinutes)
-      updateData.endTime = endTime
-    }
+    updateData.endTime = endTime
   }
 
   await prisma.class.update({
