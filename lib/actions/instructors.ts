@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db'
 import { getSession } from './auth'
 import { revalidatePath } from 'next/cache'
 import { addMinutes, isBefore, isAfter, isEqual } from 'date-fns'
+import { writeAudit } from '@/lib/audit'
 
 export async function getInstructors() {
   const session = await getSession()
@@ -83,6 +84,13 @@ export async function createInstructor(data: {
     },
   })
 
+  await writeAudit({
+    action: 'INSTRUCTOR_CREATE',
+    entityType: 'Instructor',
+    entityId: instructor.id,
+    metadata: { name: instructor.name },
+  })
+
   revalidatePath('/admin/instructors')
   return { success: true, instructor }
 }
@@ -114,6 +122,13 @@ export async function updateInstructor(
     data: updateData,
   })
 
+  await writeAudit({
+    action: 'INSTRUCTOR_UPDATE',
+    entityType: 'Instructor',
+    entityId: id,
+    metadata: { fields: Object.keys(updateData) },
+  })
+
   revalidatePath('/admin/instructors')
   revalidatePath(`/admin/instructors/${id}`)
   return { success: true }
@@ -138,6 +153,12 @@ export async function deleteInstructor(id: string) {
   }
 
   await prisma.instructor.delete({ where: { id } })
+
+  await writeAudit({
+    action: 'INSTRUCTOR_DELETE',
+    entityType: 'Instructor',
+    entityId: id,
+  })
   revalidatePath('/admin/instructors')
   return { success: true }
 }
@@ -234,7 +255,7 @@ export async function addInstructorAvailability(data: {
   if (!data.startTime || !data.endTime) return { error: 'Start and end time required' }
   if (data.dayOfWeek < 0 || data.dayOfWeek > 6) return { error: 'dayOfWeek must be 0-6' }
 
-  await prisma.instructorAvailabilityRule.create({
+  const rule = await prisma.instructorAvailabilityRule.create({
     data: {
       instructorId: data.instructorId,
       dayOfWeek: data.dayOfWeek,
@@ -242,6 +263,18 @@ export async function addInstructorAvailability(data: {
       endTime: data.endTime,
       effectiveFrom: data.effectiveFrom || null,
       effectiveTo: data.effectiveTo || null,
+    },
+  })
+
+  await writeAudit({
+    action: 'INSTRUCTOR_AVAILABILITY_ADD',
+    entityType: 'InstructorAvailabilityRule',
+    entityId: rule.id,
+    metadata: {
+      instructorId: data.instructorId,
+      dayOfWeek: data.dayOfWeek,
+      startTime: data.startTime,
+      endTime: data.endTime,
     },
   })
 
@@ -259,6 +292,13 @@ export async function deleteInstructorAvailability(id: string) {
   if (!rule) return { error: 'Not found' }
 
   await prisma.instructorAvailabilityRule.delete({ where: { id } })
+
+  await writeAudit({
+    action: 'INSTRUCTOR_AVAILABILITY_DELETE',
+    entityType: 'InstructorAvailabilityRule',
+    entityId: id,
+    metadata: { instructorId: rule.instructorId },
+  })
   revalidatePath(`/admin/instructors/${rule.instructorId}`)
   return { success: true }
 }
@@ -278,11 +318,23 @@ export async function addInstructorTimeOff(data: {
     return { error: 'End time must be after start time' }
   }
 
-  await prisma.instructorTimeOff.create({
+  const entry = await prisma.instructorTimeOff.create({
     data: {
       instructorId: data.instructorId,
       startAt: data.startAt,
       endAt: data.endAt,
+      reason: data.reason || null,
+    },
+  })
+
+  await writeAudit({
+    action: 'INSTRUCTOR_TIME_OFF_ADD',
+    entityType: 'InstructorTimeOff',
+    entityId: entry.id,
+    metadata: {
+      instructorId: data.instructorId,
+      startAt: data.startAt.toISOString(),
+      endAt: data.endAt.toISOString(),
       reason: data.reason || null,
     },
   })
@@ -301,6 +353,13 @@ export async function deleteInstructorTimeOff(id: string) {
   if (!timeOff) return { error: 'Not found' }
 
   await prisma.instructorTimeOff.delete({ where: { id } })
+
+  await writeAudit({
+    action: 'INSTRUCTOR_TIME_OFF_DELETE',
+    entityType: 'InstructorTimeOff',
+    entityId: id,
+    metadata: { instructorId: timeOff.instructorId },
+  })
   revalidatePath(`/admin/instructors/${timeOff.instructorId}`)
   return { success: true }
 }

@@ -172,3 +172,42 @@ model StudioSettings {
 
   updatedAt             DateTime @updatedAt
 }
+
+enum AuditAction {
+  CLASS_CREATE
+  CLASS_UPDATE
+  CLASS_DELETE
+  CLASS_CAPACITY_OVERRIDE
+
+  INSTRUCTOR_CREATE
+  INSTRUCTOR_UPDATE
+  INSTRUCTOR_DELETE
+  INSTRUCTOR_AVAILABILITY_ADD
+  INSTRUCTOR_AVAILABILITY_DELETE
+  INSTRUCTOR_TIME_OFF_ADD
+  INSTRUCTOR_TIME_OFF_DELETE
+
+  BOOKING_CREATE
+  BOOKING_CANCEL
+  WAITLIST_JOIN
+  WAITLIST_PROMOTE
+}
+
+model AuditLog {
+  id          String      @id @default(cuid())
+  action      AuditAction
+  entityType  String
+  entityId    String?
+
+  actorUserId String?
+  actorEmail  String?
+  actorRole   String?
+
+  metadata    Json?
+
+  createdAt   DateTime    @default(now())
+
+  @@index([entityType, entityId])
+  @@index([actorUserId])
+  @@index([createdAt])
+}

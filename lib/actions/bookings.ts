@@ -3,6 +3,7 @@
 import { prisma } from '@/lib/db'
 import { getSession } from './auth'
 import { revalidatePath } from 'next/cache'
+import { writeAudit } from '@/lib/audit'
 
 export async function getBookableClasses(
   startDate: Date,
@@ -181,12 +182,19 @@ export async function bookClass(classId: string) {
   const spotsRemaining = classItem.capacity - classItem.bookings.length
 
   if (spotsRemaining > 0) {
-    await prisma.booking.create({
+    const booking = await prisma.booking.create({
       data: {
         userId: session.id,
         classId,
         status: 'CONFIRMED',
       },
+    })
+
+    await writeAudit({
+      action: 'BOOKING_CREATE',
+      entityType: 'Booking',
+      entityId: booking.id,
+      metadata: { classId },
     })
     revalidatePath('/schedule')
     revalidatePath('/dashboard')
@@ -195,12 +203,19 @@ export async function bookClass(classId: string) {
     const lastEntry = classItem.waitlistEntries[classItem.waitlistEntries.length - 1]
     const newPosition = lastEntry ? lastEntry.position + 1 : 1
 
-    await prisma.waitlistEntry.create({
+    const entry = await prisma.waitlistEntry.create({
       data: {
         userId: session.id,
         classId,
         position: newPosition,
       },
+    })
+
+    await writeAudit({
+      action: 'WAITLIST_JOIN',
+      entityType: 'WaitlistEntry',
+      entityId: entry.id,
+      metadata: { classId, position: newPosition },
     })
     revalidatePath('/schedule')
     revalidatePath('/dashboard')
@@ -247,6 +262,13 @@ export async function cancelBooking(bookingId: string) {
     },
   })
 
+  await writeAudit({
+    action: 'BOOKING_CANCEL',
+    entityType: 'Booking',
+    entityId: bookingId,
+    metadata: { classId: booking.classId },
+  })
+
   await promoteFromWaitlist(booking.classId)
   revalidatePath('/schedule')
   revalidatePath('/dashboard')
@@ -291,7 +313,7 @@ async function promoteFromWaitlist(classId: string) {
 
   for (let i = 0; i < Math.min(spotsAvailable, classItem.waitlistEntries.length); i++) {
     const entry = classItem.waitlistEntries[i]
-    await prisma.booking.create({
+    const booking = await prisma.booking.create({
       data: {
         userId: entry.userId,
         classId,
@@ -301,6 +323,13 @@ async function promoteFromWaitlist(classId: string) {
     await prisma.waitlistEntry.update({
       where: { id: entry.id },
       data: { promotedAt: new Date() },
+    })
+
+    await writeAudit({
+      action: 'WAITLIST_PROMOTE',
+      entityType: 'WaitlistEntry',
+      entityId: entry.id,
+      metadata: { classId, bookingId: booking.id, userId: entry.userId },
     })
   }
 

@@ -4,6 +4,7 @@ import { prisma } from '@/lib/db'
 import { getSession } from './auth'
 import { revalidatePath } from 'next/cache'
 import { checkInstructorConflicts } from './instructors'
+import { writeAudit } from '@/lib/audit'
 
 export async function createClass(data: {
   classTypeId: string
@@ -37,6 +38,20 @@ export async function createClass(data: {
       endTime,
       capacity: data.capacity,
       room: data.room,
+    },
+  })
+
+  await writeAudit({
+    action: 'CLASS_CREATE',
+    entityType: 'Class',
+    entityId: classItem.id,
+    metadata: {
+      classTypeId: classItem.classTypeId,
+      instructorId: classItem.instructorId,
+      startTime: classItem.startTime.toISOString(),
+      endTime: classItem.endTime.toISOString(),
+      capacity: classItem.capacity,
+      room: classItem.room,
     },
   })
 
@@ -101,6 +116,15 @@ export async function updateClass(
     data: updateData,
   })
 
+  await writeAudit({
+    action: 'CLASS_UPDATE',
+    entityType: 'Class',
+    entityId: classId,
+    metadata: {
+      fields: Object.keys(updateData),
+    },
+  })
+
   revalidatePath('/admin/classes')
   revalidatePath('/schedule')
   return { success: true }
@@ -113,6 +137,12 @@ export async function deleteClass(classId: string) {
   }
 
   await prisma.class.delete({ where: { id: classId } })
+
+  await writeAudit({
+    action: 'CLASS_DELETE',
+    entityType: 'Class',
+    entityId: classId,
+  })
   revalidatePath('/admin/classes')
   revalidatePath('/schedule')
   return { success: true }
@@ -313,6 +343,13 @@ export async function overrideCapacity(classId: string, userId: string) {
       classId,
       status: 'CONFIRMED',
     },
+  })
+
+  await writeAudit({
+    action: 'CLASS_CAPACITY_OVERRIDE',
+    entityType: 'Class',
+    entityId: classId,
+    metadata: { userId },
   })
 
   revalidatePath('/admin/classes')
