@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import { getSession } from '@/lib/actions/auth'
 import { getAdminClasses, promoteFromWaitlistAdmin } from '@/lib/actions/admin'
 import { prisma } from '@/lib/db'
@@ -27,14 +28,9 @@ export default async function AdminClassesPage() {
           <h1 className="page-title">Manage Classes</h1>
           <p className="page-subtitle">Create, edit, and manage class schedules</p>
         </div>
-        <form action={async () => {
-          'use server'
-          redirect('/admin/classes/new')
-        }}>
-          <button type="submit" className="btn btn-primary">
-            + Add Class
-          </button>
-        </form>
+        <Link href="/admin/classes/new" className="btn btn-primary">
+          + Add Class
+        </Link>
       </div>
 
       <div className="table-container card">
@@ -106,14 +102,9 @@ export default async function AdminClassesPage() {
                 </td>
                 <td>
                   <div className="action-buttons">
-                    <form action={async () => {
-                      'use server'
-                      redirect(`/admin/classes/${classItem.id}/edit`)
-                    }}>
-                      <button type="submit" className="btn btn-ghost btn-sm">
-                        Edit
-                      </button>
-                    </form>
+                    <Link href={`/admin/classes/${classItem.id}/edit`} className="btn btn-ghost btn-sm">
+                      Edit
+                    </Link>
                     {classItem.bookings.length === 0 && (
                       <form action={async () => {
                         'use server'

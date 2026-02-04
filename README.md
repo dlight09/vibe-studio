@@ -32,7 +32,7 @@ A modern, premium fitness studio booking system built with Next.js App Router, P
 ### Prerequisites
 
 - Node.js 18+
-- PostgreSQL database
+- PostgreSQL 14+ running at `localhost:5432` (or update `DATABASE_URL`)
 
 ### Installation
 
@@ -49,7 +49,7 @@ npm install
 3. Set up environment variables:
 ```bash
 cp .env.example .env
-# Edit .env with your database URL and other settings
+# Edit .env with your Postgres URL and other settings
 ```
 
 4. Initialize the database:
@@ -64,7 +64,7 @@ npm run db:seed
 npm run dev
 ```
 
-Visit `http://localhost:3000` to see the app.
+Visit `http://localhost:3000` to see the app. If you don't have Postgres running locally, start one (e.g., Docker) before running dev/build commands.
 
 ## Demo Accounts
 

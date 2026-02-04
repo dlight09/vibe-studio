@@ -5,24 +5,28 @@ import { getSession } from './auth'
 import { revalidatePath } from 'next/cache'
 
 export async function getInstructorsPublic() {
-  const instructors = await prisma.instructor.findMany({
-    where: { isActive: true },
-    orderBy: { name: 'asc' },
-    select: {
-      id: true,
-      name: true,
-      bio: true,
-      avatarUrl: true,
-      specialties: true,
-    },
-  })
+  try {
+    const instructors = await prisma.instructor.findMany({
+      where: { isActive: true },
+      orderBy: { name: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        bio: true,
+        avatarUrl: true,
+        specialties: true,
+      },
+    })
 
-  return instructors.map((i) => ({
-    ...i,
-    specialties: Array.isArray((i as any).specialties)
-      ? ((i as any).specialties as unknown as string[])
-      : JSON.parse((i as any).specialties || '[]'),
-  }))
+    return instructors.map((i) => ({
+      ...i,
+      specialties: Array.isArray((i as any).specialties)
+        ? ((i as any).specialties as unknown as string[])
+        : JSON.parse((i as any).specialties || '[]'),
+    }))
+  } catch (e) {
+    return []
+  }
 }
 
 export async function getInstructorPublic(id: string) {
@@ -47,7 +51,7 @@ export async function getInstructorPublic(id: string) {
         take: 20,
       },
     },
-  })
+  }).catch(() => null)
 
   if (!instructor) return null
 

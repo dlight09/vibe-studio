@@ -230,24 +230,28 @@ export async function getAdminClasses(startDate: Date, endDate: Date) {
     return []
   }
 
-  return prisma.class.findMany({
-    where: {
-      startTime: { gte: startDate, lte: endDate },
-    },
-    include: {
-      classType: true,
-      instructor: true,
-      bookings: {
-        include: { user: true },
-        where: { status: 'CONFIRMED' },
+  try {
+    return await prisma.class.findMany({
+      where: {
+        startTime: { gte: startDate, lte: endDate },
       },
-      waitlistEntries: {
-        include: { user: true },
-        orderBy: { position: 'asc' },
+      include: {
+        classType: true,
+        instructor: true,
+        bookings: {
+          include: { user: true },
+          where: { status: 'CONFIRMED' },
+        },
+        waitlistEntries: {
+          include: { user: true },
+          orderBy: { position: 'asc' },
+        },
       },
-    },
-    orderBy: { startTime: 'asc' },
-  })
+      orderBy: { startTime: 'asc' },
+    })
+  } catch {
+    return []
+  }
 }
 
 export async function promoteFromWaitlistAdmin(classId: string, userId: string) {

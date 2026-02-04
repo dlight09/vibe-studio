@@ -13,46 +13,50 @@ export async function getBookableClasses(
     intensity?: number
   }
 ) {
-  const classes = await prisma.class.findMany({
-    where: {
-      startTime: {
-        gte: startDate,
-        lte: endDate,
+  try {
+    const classes = await prisma.class.findMany({
+      where: {
+        startTime: {
+          gte: startDate,
+          lte: endDate,
+        },
+        isCancelled: false,
+        classType: {
+          ...(filters?.category && { category: filters.category }),
+          ...(filters?.intensity && { intensity: filters.intensity }),
+          isActive: true,
+        },
+        ...(filters?.instructorId && { instructorId: filters.instructorId }),
       },
-      isCancelled: false,
-      classType: {
-        ...(filters?.category && { category: filters.category }),
-        ...(filters?.intensity && { intensity: filters.intensity }),
-        isActive: true,
+      include: {
+        classType: true,
+        instructor: true,
+        bookings: {
+          where: { status: 'CONFIRMED' },
+          select: { id: true, userId: true, status: true },
+        },
+        waitlistEntries: {
+          orderBy: { position: 'asc' },
+        },
       },
-      ...(filters?.instructorId && { instructorId: filters.instructorId }),
-    },
-    include: {
-      classType: true,
-      instructor: true,
-      bookings: {
-        where: { status: 'CONFIRMED' },
-        select: { id: true, userId: true, status: true },
-      },
-      waitlistEntries: {
-        orderBy: { position: 'asc' },
-      },
-    },
-    orderBy: { startTime: 'asc' },
-  })
+      orderBy: { startTime: 'asc' },
+    })
 
-  return classes.map((c) => ({
-    ...c,
-    instructor: {
-      ...c.instructor,
-      specialties: Array.isArray((c.instructor as any).specialties)
-        ? ((c.instructor as any).specialties as unknown as string[])
-        : JSON.parse((c.instructor as any).specialties || '[]'),
-    },
-    spotsRemaining: c.capacity - c.bookings.length,
-    isFull: c.bookings.length >= c.capacity,
-    waitlistCount: c.waitlistEntries.length,
-  }))
+    return classes.map((c) => ({
+      ...c,
+      instructor: {
+        ...c.instructor,
+        specialties: Array.isArray((c.instructor as any).specialties)
+          ? ((c.instructor as any).specialties as unknown as string[])
+          : JSON.parse((c.instructor as any).specialties || '[]'),
+      },
+      spotsRemaining: c.capacity - c.bookings.length,
+      isFull: c.bookings.length >= c.capacity,
+      waitlistCount: c.waitlistEntries.length,
+    }))
+  } catch {
+    return []
+  }
 }
 
 export async function getUserBookings() {
@@ -144,10 +148,27 @@ export async function bookClass(classId: string) {
       },
     },
   })
-  if (existingBooking) {
-    if (existingBooking.status === 'CONFIRMED') {
-      return { error: 'You are already booked for this class' }
-    }
+  if (existingBooking && existingBooking.status === 'CONFIRMED') {
+    return { error: 'You are already booked for this class' }
+  }
+
+  // Prevent overlapping bookings for this user
+  const overlapping = await prisma.booking.findFirst({
+    where: {
+      userId: session.id,
+      status: 'CONFIRMED',
+      class: {
+        isCancelled: false,
+        startTime: { lt: classItem.endTime },
+        endTime: { gt: classItem.startTime },
+      },
+    },
+    include: {
+      class: true,
+    },
+  })
+  if (overlapping) {
+    return { error: 'You have another booking that overlaps this time' }
   }
 
   const settings = await prisma.studioSettings.findFirst()

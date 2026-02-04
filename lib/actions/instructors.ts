@@ -11,27 +11,31 @@ export async function getInstructors() {
     return []
   }
 
-  return prisma.instructor.findMany({
-    orderBy: { name: 'asc' },
-    include: {
-      classes: {
-        where: {
-          startTime: { gte: new Date() },
+  try {
+    return await prisma.instructor.findMany({
+      orderBy: { name: 'asc' },
+      include: {
+        classes: {
+          where: {
+            startTime: { gte: new Date() },
+          },
+          take: 5,
+          orderBy: { startTime: 'asc' },
         },
-        take: 5,
-        orderBy: { startTime: 'asc' },
-      },
-      _count: {
-        select: {
-          classes: {
-            where: {
-              startTime: { gte: new Date() },
+        _count: {
+          select: {
+            classes: {
+              where: {
+                startTime: { gte: new Date() },
+              },
             },
           },
         },
       },
-    },
-  })
+    })
+  } catch {
+    return []
+  }
 }
 
 export async function getInstructor(id: string) {
