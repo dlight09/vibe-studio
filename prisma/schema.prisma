@@ -1,0 +1,174 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String
+  passwordHash  String
+  role          String    @default("MEMBER")
+  phone         String?
+  avatarUrl     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  membershipType     String?   @default("DROP_IN")
+  membershipExpiresAt DateTime?
+
+  bookings      Booking[]
+  waitlistEntries WaitlistEntry[]
+  attendances   Attendance[]
+}
+
+model Instructor {
+  id          String   @id @default(cuid())
+  name        String
+  bio         String?
+  avatarUrl   String?
+  specialties String   @default("[]")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  classes     Class[]
+  availability InstructorAvailabilityRule[]
+  timeOff      InstructorTimeOff[]
+}
+
+model InstructorAvailabilityRule {
+  id            String   @id @default(cuid())
+  instructorId  String
+  instructor    Instructor @relation(fields: [instructorId], references: [id])
+
+  dayOfWeek     Int
+  startTime     String   // HH:mm
+  endTime       String   // HH:mm
+  effectiveFrom DateTime?
+  effectiveTo   DateTime?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([instructorId])
+}
+
+model InstructorTimeOff {
+  id            String   @id @default(cuid())
+  instructorId  String
+  instructor    Instructor @relation(fields: [instructorId], references: [id])
+
+  startAt       DateTime
+  endAt         DateTime
+  reason        String?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([instructorId, startAt, endAt])
+}
+
+model ClassType {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  category        String
+  intensity       Int      @default(3)
+  durationMinutes Int      @default(60)
+  color           String   @default("#6366f1")
+  icon            String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  classes         Class[]
+}
+
+model Class {
+  id            String   @id @default(cuid())
+  classTypeId   String
+  classType     ClassType @relation(fields: [classTypeId], references: [id])
+  instructorId  String
+  instructor    Instructor @relation(fields: [instructorId], references: [id])
+
+  startTime     DateTime
+  endTime       DateTime
+  capacity      Int      @default(20)
+  room          String?
+
+  isRecurring   Boolean  @default(false)
+  recurrenceRule String?
+
+  isCancelled   Boolean  @default(false)
+  cancelReason  String?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  bookings      Booking[]
+  waitlistEntries WaitlistEntry[]
+  attendances   Attendance[]
+}
+
+model Booking {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  classId     String
+  class       Class    @relation(fields: [classId], references: [id])
+
+  status      String   @default("CONFIRMED")
+  bookedAt    DateTime @default(now())
+  cancelledAt DateTime?
+
+  reminderSent Boolean  @default(false)
+
+  @@unique([userId, classId])
+}
+
+model WaitlistEntry {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  classId     String
+  class       Class    @relation(fields: [classId], references: [id])
+
+  position    Int
+  notifiedAt  DateTime?
+  promotedAt  DateTime?
+
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, classId])
+}
+
+model Attendance {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  classId     String
+  class       Class    @relation(fields: [classId], references: [id])
+
+  attendedAt  DateTime @default(now())
+  checkInMethod String? @default("manual")
+
+  @@unique([userId, classId])
+}
+
+model StudioSettings {
+  id                    String   @id @default(cuid())
+  name                  String   @default("Vibe Studio")
+  bookingWindowDays     Int      @default(14)
+  cancellationWindowHours Int    @default(12)
+  lateCancelFee         Int      @default(0)
+  minBookingBalance     Int      @default(1)
+  defaultCapacity       Int      @default(20)
+  timezone              String   @default("America/New_York")
+
+  updatedAt             DateTime @updatedAt
+}
