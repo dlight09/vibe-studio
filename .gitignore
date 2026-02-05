@@ -7,3 +7,4 @@ coverage
 dist
 *.local
 *.DS_Store
+devserver.pid
