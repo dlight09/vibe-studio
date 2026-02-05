@@ -12,6 +12,8 @@ async function createAction(_: { error?: string; success?: boolean }, formData: 
   const durationMinutes = Number(formData.get('durationMinutes') || 0)
   const capacity = Number(formData.get('capacity') || 0)
   const room = (formData.get('room') as string) || undefined
+  const overrideConflicts = formData.get('overrideConflicts') === '1'
+  const overrideReason = String(formData.get('overrideReason') || '')
 
   const result = await createClass({
     classTypeId,
@@ -20,6 +22,8 @@ async function createAction(_: { error?: string; success?: boolean }, formData: 
     durationMinutes,
     capacity,
     room,
+    overrideConflicts,
+    overrideReason,
   })
 
   if (result?.error) return { error: result.error, success: false }
@@ -51,6 +55,7 @@ export default async function NewClassPage() {
         instructors={instructors}
         action={createAction}
         submitLabel="Create Class"
+        canOverride={session.role === 'ADMIN'}
       />
     </div>
   )

@@ -3,6 +3,8 @@
 import { useFormState } from 'react-dom'
 import { useRouter } from 'next/navigation'
 import { useEffect } from 'react'
+import { useFormStatus } from 'react-dom'
+import { useToast } from '@/components/ui/ToastProvider'
 
 type ClassFormState = {
   error?: string
@@ -24,18 +26,21 @@ interface ClassFormProps {
   }
   action: (prevState: ClassFormState, formData: FormData) => Promise<ClassFormState>
   submitLabel: string
+  canOverride?: boolean
 }
 
-export default function ClassForm({ classTypes, instructors, initial, action, submitLabel }: ClassFormProps) {
+export default function ClassForm({ classTypes, instructors, initial, action, submitLabel, canOverride }: ClassFormProps) {
   const router = useRouter()
+  const { toast } = useToast()
   const [state, formAction] = useFormState<ClassFormState, FormData>(action, { success: false })
 
   useEffect(() => {
     if (state.success) {
+      toast({ title: 'Saved', description: 'Class updated.', variant: 'success' })
       router.push('/admin/classes')
       router.refresh()
     }
-  }, [state.success, router])
+  }, [state.success, router, toast])
 
   return (
     <form action={formAction} className="card" style={{ padding: '24px', display: 'grid', gap: '16px' }}>
@@ -110,6 +115,19 @@ export default function ClassForm({ classTypes, instructors, initial, action, su
         />
       </div>
 
+      {canOverride && (
+        <div className="card" style={{ padding: '14px 16px', background: 'rgb(var(--muted))' }}>
+          <label style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <input type="checkbox" name="overrideConflicts" value="1" />
+            <span className="text-sm font-medium">Override conflicts (Admin only)</span>
+          </label>
+          <div style={{ marginTop: '10px' }}>
+            <label className="label" htmlFor="overrideReason">Override reason</label>
+            <input className="input" id="overrideReason" name="overrideReason" placeholder="Required when overriding" />
+          </div>
+        </div>
+      )}
+
       {state.error && (
         <div className="card" style={{ padding: '12px', background: 'rgba(239,68,68,0.1)', color: 'rgb(239,68,68)' }}>
           {state.error}
@@ -118,8 +136,17 @@ export default function ClassForm({ classTypes, instructors, initial, action, su
 
       <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
         <a className="btn btn-secondary" href="/admin/classes">Cancel</a>
-        <button type="submit" className="btn btn-primary">{submitLabel}</button>
+        <SubmitButton label={submitLabel} />
       </div>
     </form>
+  )
+}
+
+function SubmitButton({ label }: { label: string }) {
+  const { pending } = useFormStatus()
+  return (
+    <button type="submit" className="btn btn-primary" disabled={pending}>
+      {pending ? <span className="loading-spinner" /> : label}
+    </button>
   )
 }

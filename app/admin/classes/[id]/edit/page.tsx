@@ -12,6 +12,8 @@ async function updateAction(classId: string, _: { error?: string; success?: bool
   const durationMinutes = Number(formData.get('durationMinutes') || 0)
   const capacity = Number(formData.get('capacity') || 0)
   const room = (formData.get('room') as string) || undefined
+  const overrideConflicts = formData.get('overrideConflicts') === '1'
+  const overrideReason = String(formData.get('overrideReason') || '')
 
   const result = await updateClass(classId, {
     classTypeId,
@@ -20,6 +22,8 @@ async function updateAction(classId: string, _: { error?: string; success?: bool
     durationMinutes,
     capacity,
     room,
+    overrideConflicts,
+    overrideReason,
   })
 
   if (result?.error) return { error: result.error, success: false }
@@ -73,6 +77,7 @@ export default async function EditClassPage({ params }: { params: Promise<{ id: 
         initial={initial}
         action={updateAction.bind(null, id)}
         submitLabel="Update Class"
+        canOverride={session.role === 'ADMIN'}
       />
     </div>
   )

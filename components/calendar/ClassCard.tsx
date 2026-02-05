@@ -37,9 +37,10 @@ interface ClassCardProps {
   onBook: () => void
   onCancel: () => void
   userId?: string
+  pending?: boolean
 }
 
-export default function ClassCard({ class: classItem, onBook, onCancel, userId }: ClassCardProps) {
+export default function ClassCard({ class: classItem, onBook, onCancel, userId, pending }: ClassCardProps) {
   const userBooking = classItem.bookings.find((b) => b.userId === userId && b.status === 'CONFIRMED')
   const userWaitlist = classItem.waitlistEntries.find((w) => w.userId === userId)
 
@@ -105,19 +106,23 @@ export default function ClassCard({ class: classItem, onBook, onCancel, userId }
 
         {userBooking ? (
           <button onClick={onCancel} className="btn btn-secondary btn-sm cancel-btn">
-            Cancel Booking
+            {pending ? <span className="loading-spinner" /> : 'Cancel Booking'}
           </button>
         ) : (
           <button
             onClick={onBook}
             className={`btn btn-sm book-btn ${classItem.isFull ? 'btn-secondary' : 'btn-primary'}`}
-            disabled={!!userWaitlist}
+            disabled={!!userWaitlist || !!pending}
           >
-            {userWaitlist
-              ? `Waitlist #${userWaitlist.position}`
-              : classItem.isFull
-              ? 'Join Waitlist'
-              : 'Book'}
+            {pending ? (
+              <span className="loading-spinner" />
+            ) : userWaitlist ? (
+              `Waitlist #${userWaitlist.position}`
+            ) : classItem.isFull ? (
+              'Join Waitlist'
+            ) : (
+              'Book'
+            )}
           </button>
         )}
       </div>

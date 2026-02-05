@@ -1,10 +1,12 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { format, startOfWeek, addDays, isSameDay, parseISO } from 'date-fns'
+import { useRouter } from 'next/navigation'
 import ClassCard from '@/components/calendar/ClassCard'
 import BookingModal from '@/components/booking/BookingModal'
 import FilterBar from '@/components/calendar/FilterBar'
+import { useToast } from '@/components/ui/ToastProvider'
 
 interface Class {
   id: string
@@ -45,7 +47,9 @@ interface ScheduleClientProps {
 }
 
 export default function ScheduleClient({ initialClasses, userId, instructors }: ScheduleClientProps) {
-  const [classes] = useState<Class[]>(initialClasses)
+  const router = useRouter()
+  const { toast } = useToast()
+  const [classes, setClasses] = useState<Class[]>(initialClasses)
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [selectedClass, setSelectedClass] = useState<Class | null>(null)
   const [filters, setFilters] = useState({
@@ -54,6 +58,11 @@ export default function ScheduleClient({ initialClasses, userId, instructors }: 
     instructorId: '',
   })
   const [weekStart, setWeekStart] = useState(startOfWeek(new Date(), { weekStartsOn: 1 }))
+  const [pending, setPending] = useState<Record<string, 'book' | 'cancel' | null>>({})
+
+  useEffect(() => {
+    setClasses(initialClasses)
+  }, [initialClasses])
 
   const weekDays = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
 
@@ -72,6 +81,7 @@ export default function ScheduleClient({ initialClasses, userId, instructors }: 
   }, [])
 
   const handleBook = useCallback(async (classId: string) => {
+    setPending((p) => ({ ...p, [classId]: 'book' }))
     const formData = new FormData()
     formData.append('classId', classId)
 
@@ -81,25 +91,36 @@ export default function ScheduleClient({ initialClasses, userId, instructors }: 
     })
 
     if (response.ok) {
-      window.location.reload()
+      const data = await response.json().catch(() => null)
+      toast({
+        title: data?.isWaitlist ? 'Added to waitlist' : 'Booked',
+        description: data?.message,
+        variant: 'success',
+      })
+      router.refresh()
     } else {
       const data = await response.json()
-      alert(data.error || 'Failed to book class')
+      toast({ title: 'Booking failed', description: data.error || 'Failed to book class', variant: 'error' })
     }
-  }, [])
+    setPending((p) => ({ ...p, [classId]: null }))
+  }, [router, toast])
 
   const handleCancel = useCallback(async (bookingId: string) => {
+    setPending((p) => ({ ...p, [bookingId]: 'cancel' }))
     const response = await fetch(`/api/bookings/${bookingId}`, {
       method: 'DELETE',
     })
 
     if (response.ok) {
-      window.location.reload()
+      const data = await response.json().catch(() => null)
+      toast({ title: 'Cancelled', description: data?.message, variant: 'success' })
+      router.refresh()
     } else {
       const data = await response.json()
-      alert(data.error || 'Failed to cancel booking')
+      toast({ title: 'Cancellation failed', description: data.error || 'Failed to cancel booking', variant: 'error' })
     }
-  }, [])
+    setPending((p) => ({ ...p, [bookingId]: null }))
+  }, [router, toast])
 
   return (
     <div className="schedule-page">
@@ -166,6 +187,10 @@ export default function ScheduleClient({ initialClasses, userId, instructors }: 
                   }
                 }}
                 userId={userId}
+                pending={
+                  pending[classItem.id] === 'book' ||
+                  pending[classItem.bookings.find((b) => b.userId === userId)?.id || ''] === 'cancel'
+                }
               />
             ))}
           </div>

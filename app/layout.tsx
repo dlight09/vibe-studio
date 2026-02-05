@@ -2,6 +2,7 @@ import '@/styles/globals.css'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { getSession } from '@/lib/actions/auth'
+import ClientProviders from '@/components/ui/ClientProviders'
 
 export const metadata: Metadata = {
   title: 'Vibe Studio',
@@ -69,7 +70,9 @@ export default async function RootLayout({
             </div>
           </div>
         </nav>
-        <main className="main">{children}</main>
+        <ClientProviders>
+          <main className="main">{children}</main>
+        </ClientProviders>
       </body>
     </html>
   )

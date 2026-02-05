@@ -13,6 +13,8 @@ export async function createClass(data: {
   durationMinutes: number
   capacity: number
   room?: string
+  overrideConflicts?: boolean
+  overrideReason?: string
 }) {
   const session = await getSession()
   if (!session || (session.role !== 'STAFF' && session.role !== 'ADMIN')) {
@@ -28,7 +30,13 @@ export async function createClass(data: {
     startTime,
     endTime,
   })
-  if (conflict.error) return { error: conflict.error }
+  if (conflict.error) {
+    if (data.overrideConflicts && session.role === 'ADMIN' && !data.overrideReason) {
+      return { error: 'Override reason is required' }
+    }
+    const canOverride = data.overrideConflicts && session.role === 'ADMIN' && !!data.overrideReason
+    if (!canOverride) return { error: conflict.error }
+  }
 
   const classItem = await prisma.class.create({
     data: {
@@ -52,6 +60,9 @@ export async function createClass(data: {
       endTime: classItem.endTime.toISOString(),
       capacity: classItem.capacity,
       room: classItem.room,
+      override: !!(data.overrideConflicts && data.overrideReason),
+      overrideReason: data.overrideReason || null,
+      conflictIgnored: conflict.error || null,
     },
   })
 
@@ -71,6 +82,8 @@ export async function updateClass(
     room?: string
     isCancelled?: boolean
     cancelReason?: string
+    overrideConflicts?: boolean
+    overrideReason?: string
   }
 ) {
   const session = await getSession()
@@ -105,7 +118,13 @@ export async function updateClass(
       endTime,
       classId,
     })
-    if (conflict.error) return { error: conflict.error }
+    if (conflict.error) {
+      if (data.overrideConflicts && session.role === 'ADMIN' && !data.overrideReason) {
+        return { error: 'Override reason is required' }
+      }
+      const canOverride = data.overrideConflicts && session.role === 'ADMIN' && !!data.overrideReason
+      if (!canOverride) return { error: conflict.error }
+    }
 
     updateData.startTime = startTime
     updateData.endTime = endTime
@@ -122,6 +141,8 @@ export async function updateClass(
     entityId: classId,
     metadata: {
       fields: Object.keys(updateData),
+      override: !!(data.overrideConflicts && data.overrideReason),
+      overrideReason: data.overrideReason || null,
     },
   })
 
@@ -325,7 +346,7 @@ async function reindexWaitlistAdmin(classId: string) {
   }
 }
 
-export async function overrideCapacity(classId: string, userId: string) {
+export async function overrideCapacity(classId: string, userId: string, reason?: string) {
   const session = await getSession()
   if (!session || (session.role !== 'STAFF' && session.role !== 'ADMIN')) {
     return { error: 'Unauthorized' }
@@ -349,7 +370,7 @@ export async function overrideCapacity(classId: string, userId: string) {
     action: 'CLASS_CAPACITY_OVERRIDE',
     entityType: 'Class',
     entityId: classId,
-    metadata: { userId },
+    metadata: { userId, reason: reason || null },
   })
 
   revalidatePath('/admin/classes')

@@ -64,6 +64,9 @@ export default async function AdminPage() {
           <Link href="/admin/instructors" className="btn btn-secondary">
             Instructors
           </Link>
+          <Link href="/admin/audit" className="btn btn-secondary">
+            Audit
+          </Link>
           <Link href="/admin/analytics" className="btn btn-primary">
             Analytics
           </Link>
