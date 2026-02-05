@@ -23,7 +23,7 @@
 - Transactional booking + waitlist promotion
 - Double-booking prevention across overlapping times
 - Cancellation policy (late cancel vs no-show)
-- Membership enforcement (expired/credits)
+- Membership enforcement (expired/credits) (done in V2)
 
 ## Phase 4 — Communications
 - Email/SMS: booking, cancel, waitlist promotion, class cancel, reminders
