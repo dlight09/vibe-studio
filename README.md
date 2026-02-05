@@ -66,6 +66,10 @@ npm run dev
 
 Visit `http://localhost:3000` to see the app. If you don't have Postgres running locally, start one (e.g., Docker) before running dev/build commands.
 
+## Documentation
+
+Start here: `docs/README.md`.
+
 ## Demo Accounts
 
 After seeding the database, use these accounts to test:
