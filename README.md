@@ -10,12 +10,14 @@ A modern, premium fitness studio booking system built with Next.js App Router, P
 - **One-click Booking**: Book classes instantly with real-time availability
 - **Waitlist**: Automatically join waitlist when classes are full
 - **Cancellation**: Cancel bookings within the allowed window
+- **Entitlements**: Booking requires unlimited membership or available class credits
 - **Mobile-first**: Responsive design for all devices
 
 ### Staff/Admin Experience
 - **Class Management**: Create and edit classes, set capacity, assign instructors
 - **Waitlist Management**: View and promote members from waitlist
 - **Override Capacity**: Manually add members beyond capacity
+- **Plans & Members**: Create plans, sell at counter, and adjust member credits
 - **Analytics**: Track fill rates, popular classes, and attendance
 - **Attendance Tracking**: Mark no-shows and track member attendance
 
@@ -78,7 +80,8 @@ After seeding the database, use these accounts to test:
 |------|-------|----------|
 | Admin | admin@vibestudio.com | admin123 |
 | Staff | staff@vibestudio.com | admin123 |
-| Member | sarah@example.com | member123 |
+| Member (unlimited) | sarah@example.com | member123 |
+| Member (credits) | mike@example.com | member123 |
 
 ## Project Structure
 
@@ -91,6 +94,8 @@ app/
 ├── dashboard/              # Member dashboard
 ├── admin/                  # Admin dashboard
 │   ├── classes/           # Class management
+│   ├── members/           # Member management
+│   ├── plans/             # Plan management
 │   └── analytics/         # Analytics view
 ├── api/                    # API routes
 └── globals.css             # Global styles
@@ -120,6 +125,11 @@ Key models:
 - **Booking**: Member reservations
 - **WaitlistEntry**: Queue for full classes
 - **Attendance**: Check-in records
+- **Plan**: Membership and credit pack products
+- **Purchase**: Sales records for plans
+- **Payment**: Counter payment records
+- **MemberSubscription**: Active unlimited memberships
+- **CreditLedgerEntry**: Credit adjustments and consumption
 
 ## Configuration
 

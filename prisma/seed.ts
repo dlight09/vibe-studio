@@ -9,7 +9,7 @@ async function main() {
   const adminPassword = await bcrypt.hash('admin123', 10)
   const memberPassword = await bcrypt.hash('member123', 10)
 
-  await prisma.user.upsert({
+  const adminUser = await prisma.user.upsert({
     where: { email: 'admin@vibestudio.com' },
     update: {},
     create: {
@@ -22,7 +22,7 @@ async function main() {
     },
   })
 
-  await prisma.user.upsert({
+  const staffUser = await prisma.user.upsert({
     where: { email: 'staff@vibestudio.com' },
     update: {},
     create: {
@@ -73,6 +73,126 @@ async function main() {
       },
     }),
   ])
+
+  const now = new Date()
+
+  const unlimitedPlan = await prisma.plan.create({
+    data: {
+      name: 'Unlimited (30 days)',
+      type: 'UNLIMITED',
+      durationDays: 30,
+      priceCents: 14900,
+      currency: 'USD',
+      isActive: true,
+    },
+  })
+
+  const pack10Plan = await prisma.plan.create({
+    data: {
+      name: 'Class Pack (10)',
+      type: 'CLASS_PACK',
+      credits: 10,
+      creditExpiryDays: 60,
+      priceCents: 22000,
+      currency: 'USD',
+      isActive: true,
+    },
+  })
+
+  const dropInPlan = await prisma.plan.create({
+    data: {
+      name: 'Drop-in (1 class)',
+      type: 'DROP_IN',
+      credits: 1,
+      creditExpiryDays: 14,
+      priceCents: 2500,
+      currency: 'USD',
+      isActive: true,
+    },
+  })
+
+  const [sarah, mike, emma] = members
+
+  async function seedUnlimitedSubscription(userId: string, paymentMethod: 'CASH' | 'COUNTER_CARD' | 'COMP' | 'ADJUSTMENT') {
+    const purchase = await prisma.purchase.create({
+      data: {
+        userId,
+        planId: unlimitedPlan.id,
+        status: 'PAID',
+        subtotalCents: unlimitedPlan.priceCents,
+        totalCents: unlimitedPlan.priceCents,
+        currency: unlimitedPlan.currency,
+        note: 'Seed purchase',
+      },
+    })
+
+    await prisma.payment.create({
+      data: {
+        purchaseId: purchase.id,
+        method: paymentMethod,
+        status: 'RECEIVED',
+        amountCents: unlimitedPlan.priceCents,
+        note: 'Seed payment',
+      },
+    })
+
+    const endAt = new Date(now)
+    endAt.setDate(endAt.getDate() + (unlimitedPlan.durationDays ?? 30))
+    await prisma.memberSubscription.create({
+      data: {
+        userId,
+        planId: unlimitedPlan.id,
+        startAt: now,
+        endAt,
+        status: 'ACTIVE',
+        purchaseId: purchase.id,
+      },
+    })
+  }
+
+  async function seedCredits(userId: string, planId: string, credits: number, expiresDays: number | null, paymentMethod: 'CASH' | 'COUNTER_CARD' | 'COMP' | 'ADJUSTMENT') {
+    const plan = planId === pack10Plan.id ? pack10Plan : dropInPlan
+    const expiresAt = expiresDays ? new Date(now.getTime() + expiresDays * 24 * 60 * 60 * 1000) : null
+
+    const purchase = await prisma.purchase.create({
+      data: {
+        userId,
+        planId,
+        status: 'PAID',
+        subtotalCents: plan.priceCents,
+        totalCents: plan.priceCents,
+        currency: plan.currency,
+        note: 'Seed purchase',
+      },
+    })
+
+    await prisma.payment.create({
+      data: {
+        purchaseId: purchase.id,
+        method: paymentMethod,
+        status: 'RECEIVED',
+        amountCents: plan.priceCents,
+        note: 'Seed payment',
+      },
+    })
+
+    await prisma.creditLedgerEntry.create({
+      data: {
+        userId,
+        delta: credits,
+        reason: 'PURCHASE',
+        expiresAt,
+        purchaseId: purchase.id,
+        note: `Seed: ${plan.name}`,
+      },
+    })
+  }
+
+  await seedUnlimitedSubscription(adminUser.id, 'ADJUSTMENT')
+  await seedUnlimitedSubscription(staffUser.id, 'ADJUSTMENT')
+  await seedUnlimitedSubscription(sarah.id, 'COUNTER_CARD')
+  await seedUnlimitedSubscription(emma.id, 'COUNTER_CARD')
+  await seedCredits(mike.id, pack10Plan.id, pack10Plan.credits ?? 10, pack10Plan.creditExpiryDays ?? 60, 'CASH')
 
   const instructors = await Promise.all([
     prisma.instructor.create({
@@ -250,23 +370,57 @@ async function main() {
     const class_ = allClasses[i]
     const member = members[i % members.length]
 
-    await prisma.booking.create({
-      data: {
-        userId: member.id,
-        classId: class_.id,
-        status: 'CONFIRMED',
+    const existingBooking = await prisma.booking.findUnique({
+      where: {
+        userId_classId: {
+          userId: member.id,
+          classId: class_.id,
+        },
       },
     })
+
+    const booking =
+      existingBooking ??
+      (await prisma.booking.create({
+        data: {
+          userId: member.id,
+          classId: class_.id,
+          status: 'CONFIRMED',
+        },
+      }))
+
+    if (member.id === mike.id) {
+      await prisma.creditLedgerEntry.create({
+        data: {
+          userId: mike.id,
+          delta: -1,
+          reason: 'BOOKING_CONSUME',
+          bookingId: booking.id,
+          note: `Seed booking consume: ${class_.id}`,
+        },
+      })
+    }
   }
 
   if (allClasses.length > 0) {
-    await prisma.waitlistEntry.create({
-      data: {
-        userId: members[0].id,
-        classId: allClasses[0].id,
-        position: 1,
+    const existingWaitlist = await prisma.waitlistEntry.findUnique({
+      where: {
+        userId_classId: {
+          userId: members[0].id,
+          classId: allClasses[0].id,
+        },
       },
     })
+
+    if (!existingWaitlist) {
+      await prisma.waitlistEntry.create({
+        data: {
+          userId: members[0].id,
+          classId: allClasses[0].id,
+          position: 1,
+        },
+      })
+    }
   }
 
   await prisma.studioSettings.upsert({

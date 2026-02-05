@@ -18,12 +18,158 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  // Legacy fields (kept for now; use entitlements below)
   membershipType     String?   @default("DROP_IN")
   membershipExpiresAt DateTime?
 
   bookings      Booking[]
   waitlistEntries WaitlistEntry[]
   attendances   Attendance[]
+
+  subscriptions MemberSubscription[]
+  purchases     Purchase[]
+  creditLedger  CreditLedgerEntry[]
+}
+
+enum PlanType {
+  UNLIMITED
+  CLASS_PACK
+  DROP_IN
+}
+
+enum PurchaseStatus {
+  OPEN
+  PAID
+  VOID
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CASH
+  COUNTER_CARD
+  COMP
+  ADJUSTMENT
+}
+
+enum PaymentStatus {
+  RECEIVED
+  VOID
+}
+
+enum CreditReason {
+  PURCHASE
+  BOOKING_CONSUME
+  CANCEL_REFUND
+  LATE_CANCEL_CONSUME
+  MANUAL_ADJUST
+}
+
+model Plan {
+  id            String   @id @default(cuid())
+  name          String
+  type          PlanType
+
+  priceCents    Int      @default(0)
+  currency      String   @default("USD")
+
+  // UNLIMITED
+  durationDays  Int?
+
+  // CLASS_PACK / DROP_IN
+  credits       Int?
+  creditExpiryDays Int?
+
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  purchases     Purchase[]
+  subscriptions MemberSubscription[]
+}
+
+model MemberSubscription {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  planId      String
+  plan        Plan     @relation(fields: [planId], references: [id])
+
+  startAt     DateTime
+  endAt       DateTime
+  status      String   @default("ACTIVE")
+
+  purchaseId  String?
+  purchase    Purchase? @relation(fields: [purchaseId], references: [id])
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId, endAt])
+  @@index([planId])
+}
+
+model Purchase {
+  id          String         @id @default(cuid())
+  userId      String
+  user        User           @relation(fields: [userId], references: [id])
+  planId      String?
+  plan        Plan?          @relation(fields: [planId], references: [id])
+
+  status      PurchaseStatus @default(OPEN)
+  subtotalCents Int          @default(0)
+  totalCents   Int          @default(0)
+  currency     String       @default("USD")
+
+  note        String?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  payments    Payment[]
+  subscriptions MemberSubscription[]
+  creditEntries CreditLedgerEntry[]
+
+  @@index([userId, createdAt])
+}
+
+model Payment {
+  id          String        @id @default(cuid())
+  purchaseId  String
+  purchase    Purchase      @relation(fields: [purchaseId], references: [id])
+
+  method      PaymentMethod
+  status      PaymentStatus @default(RECEIVED)
+  amountCents Int
+  receivedAt  DateTime      @default(now())
+  note        String?
+
+  createdAt   DateTime @default(now())
+
+  @@index([purchaseId])
+}
+
+model CreditLedgerEntry {
+  id          String       @id @default(cuid())
+  userId      String
+  user        User         @relation(fields: [userId], references: [id])
+
+  delta       Int
+  reason      CreditReason
+  expiresAt   DateTime?
+
+  purchaseId  String?
+  purchase    Purchase?    @relation(fields: [purchaseId], references: [id])
+
+  bookingId   String?
+  booking     Booking?     @relation(fields: [bookingId], references: [id])
+
+  note        String?
+  createdAt   DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
+  @@index([purchaseId])
+  @@index([bookingId])
 }
 
 model Instructor {
@@ -128,6 +274,8 @@ model Booking {
 
   reminderSent Boolean  @default(false)
 
+  creditEntries CreditLedgerEntry[]
+
   @@unique([userId, classId])
 }
 
@@ -191,6 +339,13 @@ enum AuditAction {
   BOOKING_CANCEL
   WAITLIST_JOIN
   WAITLIST_PROMOTE
+
+  PLAN_CREATE
+  PLAN_UPDATE
+  PURCHASE_CREATE
+  PAYMENT_RECORD
+  SUBSCRIPTION_CREATE
+  CREDIT_ADJUST
 }
 
 model AuditLog {

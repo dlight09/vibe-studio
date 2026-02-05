@@ -4,6 +4,7 @@ import { getSession } from '@/lib/actions/auth'
 import { getUserBookings, getUserWaitlist } from '@/lib/actions/bookings'
 import { prisma } from '@/lib/db'
 import { formatDate, formatTime } from '@/lib/utils'
+import { getMemberEntitlements } from '@/lib/actions/membership'
 
 export default async function DashboardPage() {
   const session = await getSession()
@@ -11,18 +12,23 @@ export default async function DashboardPage() {
     redirect('/login')
   }
 
-  const [bookings, waitlist] = await Promise.all([
+  const [bookings, waitlist, entitlements, legacy] = await Promise.all([
     getUserBookings(),
     getUserWaitlist(),
+    getMemberEntitlements(session.id),
+    prisma.user.findUnique({
+      where: { id: session.id },
+      select: {
+        membershipType: true,
+        membershipExpiresAt: true,
+      },
+    }),
   ])
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.id },
-    select: {
-      membershipType: true,
-      membershipExpiresAt: true,
-    },
-  })
+  const now = new Date()
+  const activeUnlimited = entitlements.activeUnlimited
+  const creditBalance = entitlements.creditBalance
+  const legacyActive = !!(legacy?.membershipExpiresAt && legacy.membershipExpiresAt > now)
 
   const upcomingBookings = bookings.filter(
     (b) => new Date(b.class.startTime) > new Date()
@@ -49,22 +55,42 @@ export default async function DashboardPage() {
             <div className="membership-info">
               <div className="membership-type">
                 <span className="type-label">Current Plan</span>
-                <span className="type-value">{user?.membershipType?.replace('_', ' ') || 'Drop-in'}</span>
+                <span className="type-value">
+                  {activeUnlimited
+                    ? activeUnlimited.plan.name
+                    : legacyActive
+                      ? legacy?.membershipType?.replace('_', ' ') || 'Drop-in'
+                      : creditBalance > 0
+                        ? `Credits (${creditBalance})`
+                        : 'None'}
+                </span>
               </div>
               <div className="membership-expiry">
                 <span className="expiry-label">
-                  {user && user.membershipExpiresAt && user.membershipExpiresAt > new Date()
-                    ? 'Expires'
-                    : 'Expired'}
+                  {activeUnlimited
+                    ? 'Ends'
+                    : legacyActive
+                      ? 'Expires'
+                      : creditBalance > 0
+                        ? 'Credits'
+                        : 'Status'}
                 </span>
                 <span className="expiry-value">
-                  {user?.membershipExpiresAt
-                    ? new Date(user.membershipExpiresAt).toLocaleDateString('en-US', {
+                  {activeUnlimited
+                    ? new Date(activeUnlimited.endAt).toLocaleDateString('en-US', {
                         month: 'short',
                         day: 'numeric',
                         year: 'numeric',
                       })
-                    : 'N/A'}
+                    : legacyActive
+                      ? new Date(legacy!.membershipExpiresAt!).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          year: 'numeric',
+                        })
+                      : creditBalance > 0
+                        ? `${creditBalance} available`
+                        : 'No active plan'}
                 </span>
               </div>
             </div>

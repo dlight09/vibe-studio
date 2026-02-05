@@ -31,6 +31,16 @@ Key fields:
 
 - `app/admin/audit/page.tsx` lists the latest 200 events.
 
+## Membership and Payments Actions
+
+- PLAN_CREATE / PLAN_UPDATE
+- PURCHASE_CREATE
+- PAYMENT_RECORD
+- SUBSCRIPTION_CREATE
+- CREDIT_ADJUST
+
+Typical metadata fields include `planId`, `userId`, `paymentMethod`, `amountCents`, and `creditConsumed`.
+
 ## Known Gaps (Production)
 
 - No retention policy (e.g., 90 days) defined.

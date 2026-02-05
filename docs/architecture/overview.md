@@ -33,6 +33,7 @@ PostgreSQL
 
 - Auth: cookie-based JWT session (`lib/actions/auth.ts`).
 - Booking engine: booking/cancel/waitlist promotion (`lib/actions/bookings.ts`).
+- Membership engine: plans, purchases, entitlements (`lib/actions/membership.ts`).
 - Admin operations: create/edit classes, analytics (`lib/actions/admin.ts`).
 - Instructor operations: availability, time off, conflict checks (`lib/actions/instructors.ts`).
 - Audit logging: best-effort write-once events (`lib/audit.ts`, `AuditLog` model).

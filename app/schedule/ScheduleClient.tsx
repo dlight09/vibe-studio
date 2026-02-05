@@ -44,9 +44,14 @@ interface ScheduleClientProps {
   initialClasses: Class[]
   userId?: string
   instructors: Array<{ id: string; name: string }>
+  entitlementSummary: 
+    | { kind: 'loggedOut' }
+    | { kind: 'unlimited'; planName: string; endAt: string }
+    | { kind: 'credits'; credits: number }
+    | { kind: 'none' }
 }
 
-export default function ScheduleClient({ initialClasses, userId, instructors }: ScheduleClientProps) {
+export default function ScheduleClient({ initialClasses, userId, instructors, entitlementSummary }: ScheduleClientProps) {
   const router = useRouter()
   const { toast } = useToast()
   const [classes, setClasses] = useState<Class[]>(initialClasses)
@@ -125,9 +130,32 @@ export default function ScheduleClient({ initialClasses, userId, instructors }: 
   return (
     <div className="schedule-page">
       <div className="schedule-header">
-        <h1 className="schedule-title">Class Schedule</h1>
-        <div className="schedule-subtitle">
-          Book your next session
+        <div>
+          <h1 className="schedule-title">Class Schedule</h1>
+          <div className="schedule-subtitle">Book your next session</div>
+        </div>
+        <div className="schedule-entitlements">
+          {entitlementSummary.kind === 'loggedOut' && (
+            <span className="badge">Sign in to book</span>
+          )}
+          {entitlementSummary.kind === 'unlimited' && (
+            <span className="badge badge-success">
+              {entitlementSummary.planName}
+            </span>
+          )}
+          {entitlementSummary.kind === 'credits' && (
+            <span className="badge badge-warning">
+              Credits: {entitlementSummary.credits}
+            </span>
+          )}
+          {entitlementSummary.kind === 'none' && (
+            <span className="badge badge-error">No credits</span>
+          )}
+          {entitlementSummary.kind === 'unlimited' && (
+            <span className="schedule-entitlements-meta">
+              Ends {new Date(entitlementSummary.endAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+            </span>
+          )}
         </div>
       </div>
 

@@ -5,6 +5,7 @@ import { getSession } from './auth'
 import { revalidatePath } from 'next/cache'
 import { checkInstructorConflicts } from './instructors'
 import { writeAudit } from '@/lib/audit'
+import { getMemberEntitlementsInternal } from '@/lib/actions/membership'
 
 export async function createClass(data: {
   classTypeId: string
@@ -333,16 +334,46 @@ export async function promoteFromWaitlistAdmin(classId: string, userId: string) 
   })
   if (!entry) return { error: 'Waitlist entry not found' }
 
-  await prisma.booking.create({
-    data: {
-      userId,
-      classId,
-      status: 'CONFIRMED',
-    },
+  const entitlements = await getMemberEntitlementsInternal(userId)
+  const hasUnlimited = !!entitlements.activeUnlimited
+  const hasCredits = entitlements.creditBalance > 0
+  if (!hasUnlimited && !hasCredits) {
+    return { error: 'Member has no active membership or credits available.' }
+  }
+
+  const booking = await prisma.$transaction(async (tx) => {
+    const booking = await tx.booking.create({
+      data: {
+        userId,
+        classId,
+        status: 'CONFIRMED',
+      },
+    })
+
+    if (!hasUnlimited) {
+      await tx.creditLedgerEntry.create({
+        data: {
+          userId,
+          delta: -1,
+          reason: 'BOOKING_CONSUME',
+          bookingId: booking.id,
+          note: `Admin waitlist promotion for class ${classId}`,
+        },
+      })
+    }
+
+    return booking
   })
 
   await prisma.waitlistEntry.delete({ where: { id: entry.id } })
   await reindexWaitlistAdmin(classId)
+
+  await writeAudit({
+    action: 'WAITLIST_PROMOTE',
+    entityType: 'WaitlistEntry',
+    entityId: entry.id,
+    metadata: { classId, bookingId: booking.id, userId, creditConsumed: !hasUnlimited, via: 'admin' },
+  })
 
   revalidatePath('/admin/classes')
   revalidatePath('/schedule')
@@ -375,19 +406,42 @@ export async function overrideCapacity(classId: string, userId: string, reason?:
   })
   if (!classItem) return { error: 'Class not found' }
 
-  await prisma.booking.create({
-    data: {
-      userId,
-      classId,
-      status: 'CONFIRMED',
-    },
+  const entitlements = await getMemberEntitlementsInternal(userId)
+  const hasUnlimited = !!entitlements.activeUnlimited
+  const hasCredits = entitlements.creditBalance > 0
+  if (!hasUnlimited && !hasCredits) {
+    return { error: 'Member has no active membership or credits available.' }
+  }
+
+  const booking = await prisma.$transaction(async (tx) => {
+    const booking = await tx.booking.create({
+      data: {
+        userId,
+        classId,
+        status: 'CONFIRMED',
+      },
+    })
+
+    if (!hasUnlimited) {
+      await tx.creditLedgerEntry.create({
+        data: {
+          userId,
+          delta: -1,
+          reason: 'BOOKING_CONSUME',
+          bookingId: booking.id,
+          note: `Capacity override booking for class ${classId}`,
+        },
+      })
+    }
+
+    return booking
   })
 
   await writeAudit({
     action: 'CLASS_CAPACITY_OVERRIDE',
     entityType: 'Class',
     entityId: classId,
-    metadata: { userId, reason: reason || null },
+    metadata: { userId, reason: reason || null, bookingId: booking.id, creditConsumed: !hasUnlimited },
   })
 
   revalidatePath('/admin/classes')

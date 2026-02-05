@@ -28,6 +28,10 @@ RBAC is enforced on the server:
 - Admin override conflicts: `lib/actions/admin.ts` (requires ADMIN + reason)
 - Instructor availability/time off: `lib/actions/instructors.ts` (requires STAFF/ADMIN)
 - Audit viewer: `app/admin/audit/page.tsx` (requires STAFF/ADMIN)
+- Admin plans: `app/admin/plans/page.tsx` (view for STAFF/ADMIN, create/activate for ADMIN)
+- Admin members: `app/admin/members/page.tsx` (requires STAFF/ADMIN)
+- Counter sales: `lib/actions/membership.ts:sellPlanAtCounter()` (requires STAFF/ADMIN)
+- Credit adjustments: `lib/actions/membership.ts:adjustMemberCredits()` (requires ADMIN)
 
 ## Future Hardening
 
