@@ -14,6 +14,7 @@ async function updateAction(classId: string, _: { error?: string; success?: bool
   const room = (formData.get('room') as string) || undefined
   const overrideConflicts = formData.get('overrideConflicts') === '1'
   const overrideReason = String(formData.get('overrideReason') || '')
+  const changeNote = String(formData.get('changeNote') || '')
 
   const result = await updateClass(classId, {
     classTypeId,
@@ -24,6 +25,7 @@ async function updateAction(classId: string, _: { error?: string; success?: bool
     room,
     overrideConflicts,
     overrideReason,
+    changeNote,
   })
 
   if (result?.error) return { error: result.error, success: false }

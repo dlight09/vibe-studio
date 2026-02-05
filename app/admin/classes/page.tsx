@@ -105,6 +105,9 @@ export default async function AdminClassesPage() {
                     <Link href={`/admin/classes/${classItem.id}/edit`} className="btn btn-ghost btn-sm">
                       Edit
                     </Link>
+                    <Link href={`/admin/classes/${classItem.id}/swap-instructor`} className="btn btn-ghost btn-sm">
+                      Swap
+                    </Link>
                     {classItem.bookings.length === 0 && (
                       <form action={async () => {
                         'use server'

@@ -115,6 +115,17 @@ export default function ClassForm({ classTypes, instructors, initial, action, su
         />
       </div>
 
+      <div className="form-group">
+        <label className="label" htmlFor="changeNote">Change note</label>
+        <input
+          className="input"
+          type="text"
+          id="changeNote"
+          name="changeNote"
+          placeholder="Required if changing instructor"
+        />
+      </div>
+
       {canOverride && (
         <div className="card" style={{ padding: '14px 16px', background: 'rgb(var(--muted))' }}>
           <label style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>

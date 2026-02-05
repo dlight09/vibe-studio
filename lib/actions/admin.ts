@@ -84,6 +84,7 @@ export async function updateClass(
     cancelReason?: string
     overrideConflicts?: boolean
     overrideReason?: string
+    changeNote?: string
   }
 ) {
   const session = await getSession()
@@ -102,9 +103,17 @@ export async function updateClass(
     updateData.cancelReason = data.cancelReason || null
   }
 
+  let classRecord: { instructorId: string; startTime: Date; endTime: Date } | null = null
+
   if (data.startTime || data.durationMinutes || data.instructorId) {
-    const classRecord = await prisma.class.findUnique({ where: { id: classId } })
+    classRecord = await prisma.class.findUnique({ where: { id: classId } })
     if (!classRecord) return { error: 'Class not found' }
+
+    if (data.instructorId && data.instructorId !== classRecord.instructorId) {
+      if (!data.changeNote || data.changeNote.trim().length < 3) {
+        return { error: 'Reason is required when changing instructor' }
+      }
+    }
     const startTime = data.startTime ? new Date(data.startTime) : classRecord.startTime
     const duration = data.durationMinutes ?? ((classRecord.endTime.getTime() - classRecord.startTime.getTime()) / 60000)
     const endTime = new Date(startTime)
@@ -143,6 +152,14 @@ export async function updateClass(
       fields: Object.keys(updateData),
       override: !!(data.overrideConflicts && data.overrideReason),
       overrideReason: data.overrideReason || null,
+      instructorChange:
+        classRecord && data.instructorId && data.instructorId !== classRecord.instructorId
+          ? {
+              from: classRecord.instructorId,
+              to: data.instructorId,
+              reason: data.changeNote,
+            }
+          : null,
     },
   })
 
