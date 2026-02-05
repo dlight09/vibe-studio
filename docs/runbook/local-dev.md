@@ -44,4 +44,8 @@ npm run dev
 ## Demo accounts
 
 - Admin: `admin@vibestudio.com` / `admin123`
-- Member: `sarah@example.com` / `member123`
+- Staff: `staff@vibestudio.com` / `admin123`
+- Member (unlimited): `sarah@example.com` / `member123`
+- Member (credits): `mike@example.com` / `member123`
+
+Seed data includes default plans and entitlements. Manage plans at `/admin/plans` and member entitlements at `/admin/members`.
