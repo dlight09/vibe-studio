@@ -17,6 +17,13 @@ This directory contains product, architecture, and operational documentation.
 - User stories: `docs/product/v1/user-stories.md`
 - Traceability: `docs/product/v1/traceability-matrix.md`
 
+## Enterprise-style Specs (V2)
+
+- Requirements: `docs/product/v2/requirements.md`
+- Epics: `docs/product/v2/epics.md`
+- User stories: `docs/product/v2/user-stories.md`
+- Traceability: `docs/product/v2/traceability-matrix.md`
+
 ## Architecture
 
 - System overview: `docs/architecture/overview.md`
