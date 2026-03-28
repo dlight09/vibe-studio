@@ -41,6 +41,27 @@ npm run db:seed
 npm run dev
 ```
 
+## Environment
+
+- `APP_SESSION_SECRET` (or `NEXTAUTH_SECRET`) is required and must be 32+ characters.
+- `APP_URL` is required for online checkout redirects.
+- Stripe keys are optional unless testing online payments.
+
+## Local quality checks
+
+```bash
+npm run test
+npm run typecheck
+npm run lint
+npm run build
+```
+
+## Stripe local webhook testing (optional)
+
+```bash
+stripe listen --forward-to localhost:3000/api/stripe/webhook
+```
+
 ## Demo accounts
 
 - Admin: `admin@vibestudio.com` / `admin123`

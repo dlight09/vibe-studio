@@ -116,7 +116,7 @@ export default function LoginPage() {
         <div className="auth-footer">
           {isLogin ? (
             <>
-              <span className="auth-footer-text">Don't have an account?</span>
+              <span className="auth-footer-text">Don&apos;t have an account?</span>
               <button onClick={() => setIsLogin(false)} className="auth-link">
                 Sign up
               </button>

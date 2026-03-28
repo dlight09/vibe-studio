@@ -4,6 +4,8 @@ import { prisma } from '@/lib/db'
 import { getSession } from '@/lib/actions/auth'
 import { revalidatePath } from 'next/cache'
 import { writeAudit } from '@/lib/audit'
+import { getStripeClient } from '@/lib/stripe'
+import { getRequiredEnv } from '@/lib/env'
 
 async function computeEntitlements(userId: string) {
   const now = new Date()
@@ -234,4 +236,158 @@ export async function adjustMemberCredits(data: { userId: string; delta: number;
   revalidatePath(`/admin/members/${data.userId}`)
   revalidatePath('/dashboard')
   return { success: true }
+}
+
+export async function createStripeCheckoutForPlan(data: { planId: string }) {
+  const session = await getSession()
+  if (!session) return { error: 'Unauthorized' }
+
+  const plan = await prisma.plan.findUnique({ where: { id: data.planId } })
+  if (!plan || !plan.isActive) return { error: 'Plan not found' }
+
+  const appUrl = getRequiredEnv('APP_URL')
+  const stripe = getStripeClient()
+
+  const checkout = await stripe.checkout.sessions.create({
+    mode: 'payment',
+    success_url: `${appUrl}/dashboard?payment=success`,
+    cancel_url: `${appUrl}/dashboard?payment=cancelled`,
+    line_items: [
+      {
+        price_data: {
+          currency: plan.currency.toLowerCase(),
+          unit_amount: plan.priceCents,
+          product_data: {
+            name: plan.name,
+            description: `Vibe Studio ${plan.type.toLowerCase()} plan`,
+          },
+        },
+        quantity: 1,
+      },
+    ],
+    metadata: {
+      userId: session.id,
+      planId: plan.id,
+    },
+  })
+
+  if (!checkout.url) {
+    return { error: 'Failed to create checkout session' }
+  }
+
+  return { success: true, checkoutUrl: checkout.url }
+}
+
+export async function handleStripeCheckoutCompleted(params: {
+  checkoutSessionId: string
+  paymentIntentId: string | null
+  userId: string
+  planId: string
+}) {
+  const existing = await prisma.purchase.findFirst({
+    where: {
+      OR: [
+        { stripeCheckoutSessionId: params.checkoutSessionId },
+        ...(params.paymentIntentId ? [{ stripePaymentIntentId: params.paymentIntentId }] : []),
+      ],
+    },
+    select: { id: true },
+  })
+
+  if (existing) {
+    return { success: true, purchaseId: existing.id, duplicate: true }
+  }
+
+  const plan = await prisma.plan.findUnique({ where: { id: params.planId } })
+  if (!plan || !plan.isActive) return { error: 'Plan not found' }
+
+  const now = new Date()
+
+  const purchase = await prisma.$transaction(async (tx) => {
+    const purchase = await tx.purchase.create({
+      data: {
+        userId: params.userId,
+        planId: plan.id,
+        status: 'PAID',
+        subtotalCents: plan.priceCents,
+        totalCents: plan.priceCents,
+        currency: plan.currency,
+        stripeCheckoutSessionId: params.checkoutSessionId,
+        stripePaymentIntentId: params.paymentIntentId,
+        note: 'Paid via Stripe Checkout',
+      },
+    })
+
+    await tx.payment.create({
+      data: {
+        purchaseId: purchase.id,
+        method: 'STRIPE_CARD',
+        status: 'RECEIVED',
+        amountCents: plan.priceCents,
+        note: 'Stripe checkout payment',
+      },
+    })
+
+    if (plan.type === 'UNLIMITED') {
+      const durationDays = plan.durationDays ?? 30
+      const endAt = new Date(now)
+      endAt.setDate(endAt.getDate() + durationDays)
+
+      await tx.memberSubscription.create({
+        data: {
+          userId: params.userId,
+          planId: plan.id,
+          startAt: now,
+          endAt,
+          status: 'ACTIVE',
+          purchaseId: purchase.id,
+        },
+      })
+    } else {
+      const credits = plan.credits ?? 1
+      const expiresAt = plan.creditExpiryDays
+        ? new Date(now.getTime() + plan.creditExpiryDays * 24 * 60 * 60 * 1000)
+        : null
+
+      await tx.creditLedgerEntry.create({
+        data: {
+          userId: params.userId,
+          delta: credits,
+          reason: 'PURCHASE',
+          expiresAt,
+          purchaseId: purchase.id,
+          note: `Stripe purchase: ${plan.name}`,
+        },
+      })
+    }
+
+    return purchase
+  })
+
+  await writeAudit({
+    action: 'PURCHASE_CREATE',
+    entityType: 'Purchase',
+    entityId: purchase.id,
+    metadata: {
+      userId: params.userId,
+      planId: plan.id,
+      method: 'STRIPE_CARD',
+      amountCents: plan.priceCents,
+      checkoutSessionId: params.checkoutSessionId,
+    },
+  })
+
+  await writeAudit({
+    action: 'PAYMENT_RECORD',
+    entityType: 'Purchase',
+    entityId: purchase.id,
+    metadata: {
+      method: 'STRIPE_CARD',
+      amountCents: plan.priceCents,
+      paymentIntentId: params.paymentIntentId,
+    },
+  })
+
+  revalidatePath('/dashboard')
+  return { success: true, purchaseId: purchase.id }
 }

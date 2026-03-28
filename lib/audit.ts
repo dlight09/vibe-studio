@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db'
 import type { AuditAction, Prisma } from '@prisma/client'
 import { getSession } from '@/lib/actions/auth'
+import { logWarn } from '@/lib/observability'
 
 export async function writeAudit(params: {
   action: AuditAction
@@ -24,6 +25,10 @@ export async function writeAudit(params: {
       },
     })
   } catch {
-    // noop
+    logWarn('audit.write.failed', {
+      action: params.action,
+      entityType: params.entityType,
+      entityId: params.entityId ?? null,
+    })
   }
 }

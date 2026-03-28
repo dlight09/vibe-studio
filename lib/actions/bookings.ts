@@ -4,7 +4,64 @@ import { prisma } from '@/lib/db'
 import { getSession } from './auth'
 import { revalidatePath } from 'next/cache'
 import { writeAudit } from '@/lib/audit'
-import { getMemberEntitlements, getMemberEntitlementsInternal } from '@/lib/actions/membership'
+import type { Prisma } from '@prisma/client'
+import {
+  canMemberCancelBooking,
+  hasBookingEntitlement,
+  hoursUntil,
+} from '@/lib/domain/booking'
+
+const SERIALIZABLE_RETRY_LIMIT = 3
+
+function isRetryableTransactionError(error: unknown) {
+  if (!error || typeof error !== 'object') return false
+  const code = (error as { code?: string }).code
+  return code === 'P2034'
+}
+
+async function withSerializableRetries<T>(operation: (tx: Prisma.TransactionClient) => Promise<T>) {
+  let attempt = 0
+  while (attempt < SERIALIZABLE_RETRY_LIMIT) {
+    try {
+      return await prisma.$transaction(operation, { isolationLevel: 'Serializable' })
+    } catch (error) {
+      attempt += 1
+      if (!isRetryableTransactionError(error) || attempt >= SERIALIZABLE_RETRY_LIMIT) {
+        throw error
+      }
+    }
+  }
+
+  throw new Error('Failed to complete transaction after retries')
+}
+
+async function getEntitlementsInTx(tx: Prisma.TransactionClient, userId: string) {
+  const now = new Date()
+  const activeUnlimited = await tx.memberSubscription.findFirst({
+    where: {
+      userId,
+      status: 'ACTIVE',
+      startAt: { lte: now },
+      endAt: { gte: now },
+      plan: { type: 'UNLIMITED' },
+    },
+    select: { id: true },
+    orderBy: { endAt: 'desc' },
+  })
+
+  const creditAggregate = await tx.creditLedgerEntry.aggregate({
+    where: {
+      userId,
+      OR: [{ expiresAt: null }, { expiresAt: { gte: now } }],
+    },
+    _sum: { delta: true },
+  })
+
+  return {
+    hasUnlimited: Boolean(activeUnlimited),
+    creditBalance: creditAggregate._sum.delta ?? 0,
+  }
+}
 
 export async function getBookableClasses(
   startDate: Date,
@@ -127,73 +184,83 @@ export async function bookClass(classId: string) {
   })
   if (!user) return { error: 'User not found' }
 
-  const entitlements = await getMemberEntitlements(session.id)
-  const hasUnlimited = !!entitlements.activeUnlimited
-  const hasCredits = entitlements.creditBalance > 0
-  if (!hasUnlimited && !hasCredits) {
-    return { error: 'No active membership or credits available.' }
-  }
-
-  const classItem = await prisma.class.findUnique({
-    where: { id: classId },
-    include: {
-      bookings: { where: { status: 'CONFIRMED' } },
-      waitlistEntries: { orderBy: { position: 'asc' } },
-    },
-  })
-  if (!classItem) return { error: 'Class not found' }
-
-  if (classItem.isCancelled) return { error: 'This class has been cancelled' }
-
-  const existingBooking = await prisma.booking.findUnique({
-    where: {
-      userId_classId: {
-        userId: session.id,
-        classId,
+  const transactionResult = await withSerializableRetries(async (tx) => {
+    const classItem = await tx.class.findUnique({
+      where: { id: classId },
+      select: {
+        id: true,
+        startTime: true,
+        endTime: true,
+        capacity: true,
+        isCancelled: true,
       },
-    },
-  })
-  if (existingBooking && existingBooking.status === 'CONFIRMED') {
-    return { error: 'You are already booked for this class' }
-  }
+    })
 
-  // Prevent overlapping bookings for this user
-  const overlapping = await prisma.booking.findFirst({
-    where: {
-      userId: session.id,
-      status: 'CONFIRMED',
-      class: {
-        isCancelled: false,
-        startTime: { lt: classItem.endTime },
-        endTime: { gt: classItem.startTime },
-      },
-    },
-    include: {
-      class: true,
-    },
-  })
-  if (overlapping) {
-    return { error: 'You have another booking that overlaps this time' }
-  }
+    if (!classItem) {
+      return { error: 'Class not found' as const }
+    }
 
-  const settings = await prisma.studioSettings.findFirst()
-  const cancelWindow = settings?.cancellationWindowHours || 12
-  const classStartTime = new Date(classItem.startTime)
-  const now = new Date()
-  const hoursUntilClass =
-    (classStartTime.getTime() - now.getTime()) / (1000 * 60 * 60)
+    if (classItem.isCancelled) {
+      return { error: 'This class has been cancelled' as const }
+    }
 
-  const spotsRemaining = classItem.capacity - classItem.bookings.length
-
-  if (spotsRemaining > 0) {
-    const booking = await prisma.$transaction(async (tx) => {
-      const booking = await tx.booking.create({
-        data: {
+    const existingBooking = await tx.booking.findUnique({
+      where: {
+        userId_classId: {
           userId: session.id,
           classId,
-          status: 'CONFIRMED',
         },
-      })
+      },
+    })
+
+    if (existingBooking?.status === 'CONFIRMED') {
+      return { error: 'You are already booked for this class' as const }
+    }
+
+    const overlapping = await tx.booking.findFirst({
+      where: {
+        userId: session.id,
+        status: 'CONFIRMED',
+        class: {
+          isCancelled: false,
+          startTime: { lt: classItem.endTime },
+          endTime: { gt: classItem.startTime },
+        },
+      },
+      select: { id: true },
+    })
+
+    if (overlapping) {
+      return { error: 'You have another booking that overlaps this time' as const }
+    }
+
+    const entitlements = await getEntitlementsInTx(tx, session.id)
+    const hasUnlimited = entitlements.hasUnlimited
+    if (!hasBookingEntitlement({ hasUnlimited, creditBalance: entitlements.creditBalance })) {
+      return { error: 'No active membership or credits available.' as const }
+    }
+
+    const confirmedCount = await tx.booking.count({
+      where: { classId, status: 'CONFIRMED' },
+    })
+
+    if (confirmedCount < classItem.capacity) {
+      const booking = existingBooking
+        ? await tx.booking.update({
+            where: { id: existingBooking.id },
+            data: {
+              status: 'CONFIRMED',
+              cancelledAt: null,
+              bookedAt: new Date(),
+            },
+          })
+        : await tx.booking.create({
+            data: {
+              userId: session.id,
+              classId,
+              status: 'CONFIRMED',
+            },
+          })
 
       if (!hasUnlimited) {
         await tx.creditLedgerEntry.create({
@@ -207,43 +274,87 @@ export async function bookClass(classId: string) {
         })
       }
 
-      return booking
-    })
+      await tx.waitlistEntry.deleteMany({
+        where: { userId: session.id, classId, promotedAt: null },
+      })
 
-    await writeAudit({
-      action: 'BOOKING_CREATE',
-      entityType: 'Booking',
-      entityId: booking.id,
-      metadata: { classId, creditConsumed: !hasUnlimited },
-    })
-    revalidatePath('/schedule')
-    revalidatePath('/dashboard')
-    return { success: true, message: 'Class booked successfully!' }
-  } else {
-    const lastEntry = classItem.waitlistEntries[classItem.waitlistEntries.length - 1]
-    const newPosition = lastEntry ? lastEntry.position + 1 : 1
+      return {
+        success: true as const,
+        mode: 'BOOKED' as const,
+        bookingId: booking.id,
+        creditConsumed: !hasUnlimited,
+      }
+    }
 
-    const entry = await prisma.waitlistEntry.create({
-      data: {
-        userId: session.id,
-        classId,
-        position: newPosition,
+    const existingWaitlist = await tx.waitlistEntry.findUnique({
+      where: {
+        userId_classId: {
+          userId: session.id,
+          classId,
+        },
       },
     })
 
-    await writeAudit({
-      action: 'WAITLIST_JOIN',
-      entityType: 'WaitlistEntry',
-      entityId: entry.id,
-      metadata: { classId, position: newPosition },
+    if (existingWaitlist && !existingWaitlist.promotedAt) {
+      return { error: `Already on waitlist (position ${existingWaitlist.position})` as const }
+    }
+
+    const waitlistCount = await tx.waitlistEntry.count({
+      where: { classId, promotedAt: null },
     })
+    const newPosition = waitlistCount + 1
+
+    const entry = existingWaitlist
+      ? await tx.waitlistEntry.update({
+          where: { id: existingWaitlist.id },
+          data: { position: newPosition, promotedAt: null, notifiedAt: null },
+        })
+      : await tx.waitlistEntry.create({
+          data: {
+            userId: session.id,
+            classId,
+            position: newPosition,
+          },
+        })
+
+    return {
+      success: true as const,
+      mode: 'WAITLIST' as const,
+      entryId: entry.id,
+      position: entry.position,
+    }
+  })
+
+  if ('error' in transactionResult) {
+    return { error: transactionResult.error }
+  }
+
+  if (transactionResult.mode === 'BOOKED') {
+    await writeAudit({
+      action: 'BOOKING_CREATE',
+      entityType: 'Booking',
+      entityId: transactionResult.bookingId,
+      metadata: { classId, creditConsumed: transactionResult.creditConsumed },
+    })
+
     revalidatePath('/schedule')
     revalidatePath('/dashboard')
-    return {
-      success: true,
-      message: `Added to waitlist (position ${newPosition})`,
-      isWaitlist: true,
-    }
+    return { success: true, message: 'Class booked successfully!' }
+  }
+
+  await writeAudit({
+    action: 'WAITLIST_JOIN',
+    entityType: 'WaitlistEntry',
+    entityId: transactionResult.entryId,
+    metadata: { classId, position: transactionResult.position },
+  })
+
+  revalidatePath('/schedule')
+  revalidatePath('/dashboard')
+  return {
+    success: true,
+    message: `Added to waitlist (position ${transactionResult.position})`,
+    isWaitlist: true,
   }
 }
 
@@ -265,44 +376,58 @@ export async function cancelBooking(bookingId: string) {
   const cancelWindow = settings?.cancellationWindowHours || 12
   const classStartTime = new Date(booking.class.startTime)
   const now = new Date()
-  const hoursUntilClass =
-    (classStartTime.getTime() - now.getTime()) / (1000 * 60 * 60)
+  const hoursUntilClass = hoursUntil(classStartTime, now)
 
-  if (hoursUntilClass < cancelWindow && session.role !== 'ADMIN') {
+  if (!canMemberCancelBooking({
+    hoursUntilClass,
+    cancellationWindowHours: cancelWindow,
+    role: session.role,
+  })) {
     return {
       error: `Cannot cancel within ${cancelWindow} hours of class. Please contact staff.`,
     }
   }
 
-  await prisma.booking.update({
-    where: { id: bookingId },
-    data: {
-      status: 'CANCELLED',
-      cancelledAt: new Date(),
-    },
-  })
-
-  // Refund credits only when outside cancellation window.
-  if (hoursUntilClass >= cancelWindow) {
-    const consumed = await prisma.creditLedgerEntry.findFirst({
-      where: {
-        bookingId,
-        reason: 'BOOKING_CONSUME',
-      },
-      orderBy: { createdAt: 'asc' },
+  await withSerializableRetries(async (tx) => {
+    const freshBooking = await tx.booking.findUnique({
+      where: { id: bookingId },
+      include: { class: true },
     })
-    if (consumed) {
-      await prisma.creditLedgerEntry.create({
-        data: {
-          userId: booking.userId,
-          delta: 1,
-          reason: 'CANCEL_REFUND',
-          bookingId,
-          note: 'Refunded credit after cancellation',
-        },
-      })
+
+    if (!freshBooking || freshBooking.status === 'CANCELLED') {
+      return
     }
-  }
+
+    await tx.booking.update({
+      where: { id: bookingId },
+      data: {
+        status: 'CANCELLED',
+        cancelledAt: new Date(),
+      },
+    })
+
+    if (hoursUntilClass >= cancelWindow) {
+      const consumed = await tx.creditLedgerEntry.findFirst({
+        where: {
+          bookingId,
+          reason: 'BOOKING_CONSUME',
+        },
+        orderBy: { createdAt: 'asc' },
+      })
+
+      if (consumed) {
+        await tx.creditLedgerEntry.create({
+          data: {
+            userId: freshBooking.userId,
+            delta: 1,
+            reason: 'CANCEL_REFUND',
+            bookingId,
+            note: 'Refunded credit after cancellation',
+          },
+        })
+      }
+    }
+  })
 
   await writeAudit({
     action: 'BOOKING_CANCEL',
@@ -331,55 +456,81 @@ export async function cancelWaitlistEntry(entryId: string) {
   }
 
   await prisma.waitlistEntry.delete({ where: { id: entryId } })
-  reindexWaitlist(entry.classId)
+  await reindexWaitlist(entry.classId)
   revalidatePath('/schedule')
   revalidatePath('/dashboard')
   return { success: true }
 }
 
 async function promoteFromWaitlist(classId: string) {
-  const classItem = await prisma.class.findUnique({
-    where: { id: classId },
-    include: {
-      bookings: { where: { status: 'CONFIRMED' } },
-      waitlistEntries: {
-        orderBy: { position: 'asc' },
-        include: { user: true },
-      },
-    },
-  })
-  if (!classItem) return
+  const audits = await withSerializableRetries(async (tx) => {
+    const auditEvents: Array<{
+      entryId: string
+      bookingId?: string
+      userId: string
+      creditConsumed?: boolean
+      skipped?: string
+    }> = []
 
-  const spotsAvailable = classItem.capacity - classItem.bookings.length
-  if (spotsAvailable <= 0) return
+    const classItem = await tx.class.findUnique({
+      where: { id: classId },
+      select: { id: true, capacity: true },
+    })
+    if (!classItem) return auditEvents
 
-  let remaining = spotsAvailable
-  for (const entry of classItem.waitlistEntries) {
-    if (remaining <= 0) break
-
-    const entitlements = await getMemberEntitlementsInternal(entry.userId)
-    const hasUnlimited = !!entitlements.activeUnlimited
-    const hasCredits = entitlements.creditBalance > 0
-
-    if (!hasUnlimited && !hasCredits) {
-      await prisma.waitlistEntry.delete({ where: { id: entry.id } })
-      await writeAudit({
-        action: 'WAITLIST_PROMOTE',
-        entityType: 'WaitlistEntry',
-        entityId: entry.id,
-        metadata: { classId, userId: entry.userId, skipped: 'ineligible' },
+    while (true) {
+      const confirmedCount = await tx.booking.count({
+        where: { classId, status: 'CONFIRMED' },
       })
-      continue
-    }
 
-    const booking = await prisma.$transaction(async (tx) => {
-      const booking = await tx.booking.create({
-        data: {
+      if (confirmedCount >= classItem.capacity) {
+        break
+      }
+
+      const entry = await tx.waitlistEntry.findFirst({
+        where: { classId, promotedAt: null },
+        orderBy: { position: 'asc' },
+      })
+      if (!entry) break
+
+      const entitlements = await getEntitlementsInTx(tx, entry.userId)
+      const hasUnlimited = entitlements.hasUnlimited
+
+      if (!hasBookingEntitlement({ hasUnlimited, creditBalance: entitlements.creditBalance })) {
+        await tx.waitlistEntry.delete({ where: { id: entry.id } })
+        auditEvents.push({
+          entryId: entry.id,
           userId: entry.userId,
-          classId,
-          status: 'CONFIRMED',
+          skipped: 'ineligible',
+        })
+        continue
+      }
+
+      const existingBooking = await tx.booking.findUnique({
+        where: {
+          userId_classId: {
+            userId: entry.userId,
+            classId,
+          },
         },
       })
+
+      const booking = existingBooking
+        ? await tx.booking.update({
+            where: { id: existingBooking.id },
+            data: {
+              status: 'CONFIRMED',
+              cancelledAt: null,
+              bookedAt: new Date(),
+            },
+          })
+        : await tx.booking.create({
+            data: {
+              userId: entry.userId,
+              classId,
+              status: 'CONFIRMED',
+            },
+          })
 
       if (!hasUnlimited) {
         await tx.creditLedgerEntry.create({
@@ -393,35 +544,53 @@ async function promoteFromWaitlist(classId: string) {
         })
       }
 
-      return booking
-    })
+      await tx.waitlistEntry.update({
+        where: { id: entry.id },
+        data: { promotedAt: new Date() },
+      })
 
-    await prisma.waitlistEntry.update({
-      where: { id: entry.id },
-      data: { promotedAt: new Date() },
-    })
+      auditEvents.push({
+        entryId: entry.id,
+        bookingId: booking.id,
+        userId: entry.userId,
+        creditConsumed: !hasUnlimited,
+      })
+    }
 
+    await reindexWaitlistInTx(tx, classId)
+    return auditEvents
+  })
+
+  for (const event of audits) {
     await writeAudit({
       action: 'WAITLIST_PROMOTE',
       entityType: 'WaitlistEntry',
-      entityId: entry.id,
-      metadata: { classId, bookingId: booking.id, userId: entry.userId, creditConsumed: !hasUnlimited },
+      entityId: event.entryId,
+      metadata: {
+        classId,
+        bookingId: event.bookingId,
+        userId: event.userId,
+        creditConsumed: event.creditConsumed,
+        skipped: event.skipped,
+      },
     })
-
-    remaining -= 1
   }
-
-  await reindexWaitlist(classId)
 }
 
 async function reindexWaitlist(classId: string) {
-  const entries = await prisma.waitlistEntry.findMany({
+  await withSerializableRetries(async (tx) => {
+    await reindexWaitlistInTx(tx, classId)
+  })
+}
+
+async function reindexWaitlistInTx(tx: Prisma.TransactionClient, classId: string) {
+  const entries = await tx.waitlistEntry.findMany({
     where: { classId, promotedAt: null },
     orderBy: { createdAt: 'asc' },
   })
 
   for (let i = 0; i < entries.length; i++) {
-    await prisma.waitlistEntry.update({
+    await tx.waitlistEntry.update({
       where: { id: entries[i].id },
       data: { position: i + 1 },
     })

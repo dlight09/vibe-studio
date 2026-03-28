@@ -2,11 +2,11 @@
 
 Document ID: VS-ARCH-OVERVIEW
 
-Version: 0.1
+Version: 0.2
 
 Status: Draft
 
-Last updated: 2026-02-05
+Last updated: 2026-03-28
 
 ## Goals
 
@@ -37,6 +37,8 @@ PostgreSQL
 - Admin operations: create/edit classes, analytics (`lib/actions/admin.ts`).
 - Instructor operations: availability, time off, conflict checks (`lib/actions/instructors.ts`).
 - Audit logging: best-effort write-once events (`lib/audit.ts`, `AuditLog` model).
+- Observability: structured JSON app logs (`lib/observability.ts`).
+- Payments: optional Stripe checkout + webhook (`app/api/payments/checkout`, `app/api/stripe/webhook`).
 
 ## API Surface
 

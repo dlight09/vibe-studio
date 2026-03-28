@@ -47,7 +47,7 @@ export default async function AdminInstructorsPage() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Instructors</h1>
-          <p className="page-subtitle">Manage your studio's instructors</p>
+          <p className="page-subtitle">Manage your studio&apos;s instructors</p>
         </div>
         <form action={async () => {
           'use server'

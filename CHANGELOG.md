@@ -6,6 +6,20 @@ The format is based on Keep a Changelog.
 
 ## Unreleased
 
+### Added
+- Online checkout integration with Stripe session creation and webhook fulfillment.
+- Structured application logging utility and dedicated observability/deployment runbooks.
+- Automated test suite with Vitest and CI pipeline running lint, typecheck, tests, and build.
+
+### Changed
+- Booking, cancellation, and waitlist promotion now execute in serializable transactions with retry handling.
+- Authentication now requires a strong configured session secret and includes basic login rate limiting.
+- Project setup now documents quality gates and production deployment workflow.
+
+### Fixed
+- Transactional entitlement checks now reduce race-condition risk for booking and waitlist credit consumption.
+- API handlers now emit explicit failure logs for booking and payment endpoints.
+
 ## v2.0.0 - 2026-02-05
 
 ### Added

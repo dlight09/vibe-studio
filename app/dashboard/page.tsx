@@ -123,7 +123,7 @@ export default async function DashboardPage() {
             <div className="empty-icon">📅</div>
             <h3 className="empty-title">No upcoming classes</h3>
             <p className="empty-description">
-              You don't have any bookings yet. Browse the schedule to book your first class.
+              You don&apos;t have any bookings yet. Browse the schedule to book your first class.
             </p>
             <Link href="/schedule" className="btn btn-primary">
               View Schedule
