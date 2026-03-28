@@ -5,8 +5,8 @@ import { getSession } from '@/lib/actions/auth'
 import ClientProviders from '@/components/ui/ClientProviders'
 
 export const metadata: Metadata = {
-  title: 'Vibe Studio',
-  description: 'Premium fitness studio for yoga, pilates, and strength training.',
+  title: 'Studio44',
+  description: 'Editorial wellness studio for pilates, breathwork, and intentional movement.',
 }
 
 function getInitials(name: string): string {
@@ -26,7 +26,7 @@ export default async function RootLayout({
   const session = await getSession()
 
   return (
-    <html lang="en">
+    <html lang="en" className="scroll-smooth">
       <body>
         <nav className="nav">
           <div className="nav-inner">
