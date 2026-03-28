@@ -24,7 +24,7 @@ Use SemVer for releases:
 ## Release Process (Proposed)
 
 1) Create release branch/tag from `main`.
-2) Run CI gates: build, lint, typecheck, tests.
+2) Run CI gates: build, lint, typecheck, tests (`.github/workflows/ci.yml`).
 3) Update `CHANGELOG.md`.
 4) Tag release: `vX.Y.Z`.
 

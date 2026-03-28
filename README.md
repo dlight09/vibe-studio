@@ -2,6 +2,8 @@
 
 A modern, premium fitness studio booking system built with Next.js App Router, PostgreSQL, and Server Components.
 
+This repository now includes production hardening for session security, transactional booking/waitlist flows, CI checks, and optional Stripe checkout integration.
+
 ## Features
 
 ### Member Experience
@@ -18,6 +20,7 @@ A modern, premium fitness studio booking system built with Next.js App Router, P
 - **Waitlist Management**: View and promote members from waitlist
 - **Override Capacity**: Manually add members beyond capacity
 - **Plans & Members**: Create plans, sell at counter, and adjust member credits
+- **Online Checkout**: Optional Stripe checkout flow with webhook-based entitlement provisioning
 - **Analytics**: Track fill rates, popular classes, and attendance
 - **Attendance Tracking**: Mark no-shows and track member attendance
 
@@ -27,7 +30,10 @@ A modern, premium fitness studio booking system built with Next.js App Router, P
 - **Database**: PostgreSQL with Prisma ORM
 - **Styling**: Custom CSS (no external UI kits)
 - **Authentication**: JWT-based with bcrypt
+- **Payments**: Stripe Checkout + webhook (optional)
 - **Date Handling**: date-fns
+- **Testing**: Vitest
+- **CI**: GitHub Actions (`.github/workflows/ci.yml`)
 
 ## Getting Started
 
@@ -51,7 +57,8 @@ npm install
 3. Set up environment variables:
 ```bash
 cp .env.example .env
-# Edit .env with your Postgres URL and other settings
+# Edit .env with your Postgres URL and other settings.
+# APP_SESSION_SECRET (or NEXTAUTH_SECRET) must be 32+ characters.
 ```
 
 4. Initialize the database:
@@ -64,6 +71,15 @@ npm run db:seed
 5. Start the development server:
 ```bash
 npm run dev
+```
+
+### Quality Checks
+
+```bash
+npm run test
+npm run typecheck
+npm run lint
+npm run build
 ```
 
 Visit `http://localhost:3000` to see the app. If you don't have Postgres running locally, start one (e.g., Docker) before running dev/build commands.
@@ -128,6 +144,7 @@ Key models:
 - **Plan**: Membership and credit pack products
 - **Purchase**: Sales records for plans
 - **Payment**: Counter payment records
+- **Payment**: Counter and Stripe card payment records
 - **MemberSubscription**: Active unlimited memberships
 - **CreditLedgerEntry**: Credit adjustments and consumption
 
@@ -141,18 +158,28 @@ Edit `prisma/seed.ts` to customize:
 
 ## Deployment
 
-1. Set up a PostgreSQL database
-2. Configure environment variables
-3. Run database migrations:
+Recommended stack: Vercel + managed Postgres (Neon/Supabase) + Stripe + structured app logs.
+
+1. Set up a managed PostgreSQL database
+2. Configure environment variables (`DATABASE_URL`, `APP_URL`, `APP_SESSION_SECRET`, Stripe secrets if using online checkout)
+3. Generate Prisma client and apply schema updates:
 ```bash
 npm run db:generate
 npm run db:push
 ```
-4. Build and deploy:
+4. Verify checks:
+```bash
+npm run test
+npm run typecheck
+npm run lint
+```
+5. Build and deploy:
 ```bash
 npm run build
 npm start
 ```
+
+See `docs/runbook/production-deploy.md` for the full deployment checklist.
 
 ## License
 

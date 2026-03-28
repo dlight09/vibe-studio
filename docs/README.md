@@ -9,6 +9,7 @@ This directory contains product, architecture, and operational documentation.
 - V2 release notes: `docs/releases/v2.0.0.md`
 - Roadmap: `docs/product/roadmap.md`
 - Local development: `docs/runbook/local-dev.md`
+- Production deployment: `docs/runbook/production-deploy.md`
 
 ## Enterprise-style Specs (V1)
 
@@ -32,6 +33,7 @@ This directory contains product, architecture, and operational documentation.
 - Membership + entitlements: `docs/architecture/membership-entitlements.md`
 - Instructor availability + conflicts: `docs/architecture/instructor-availability.md`
 - Audit logging: `docs/architecture/audit-log.md`
+- Observability: `docs/architecture/observability.md`
 
 ## QA
 

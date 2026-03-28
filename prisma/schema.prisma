@@ -47,6 +47,7 @@ enum PurchaseStatus {
 enum PaymentMethod {
   CASH
   COUNTER_CARD
+  STRIPE_CARD
   COMP
   ADJUSTMENT
 }
@@ -121,6 +122,8 @@ model Purchase {
   currency     String       @default("USD")
 
   note        String?
+  stripeCheckoutSessionId String? @unique
+  stripePaymentIntentId String?
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -130,6 +133,7 @@ model Purchase {
   creditEntries CreditLedgerEntry[]
 
   @@index([userId, createdAt])
+  @@index([stripePaymentIntentId])
 }
 
 model Payment {

@@ -2,11 +2,11 @@
 
 Document ID: VS-ARCH-BOOKING
 
-Version: 0.1
+Version: 0.2
 
 Status: Draft
 
-Last updated: 2026-02-05
+Last updated: 2026-03-28
 
 ## Booking States
 
@@ -32,9 +32,9 @@ Waitlist entries exist separately from bookings.
 - Cancellation: `lib/actions/bookings.ts:cancelBooking()`.
 - Promotion: `lib/actions/bookings.ts:promoteFromWaitlist()`.
 - Admin promotion/override: `lib/actions/admin.ts:promoteFromWaitlistAdmin()` and `lib/actions/admin.ts:overrideCapacity()`.
+- Booking, cancellation, and waitlist promotion run in serializable DB transactions with retry on transaction conflicts.
 
 ## Known Gaps (Production)
 
-- Concurrency: promotions and bookings should be transactional (DB-level locking) to avoid race conditions.
 - Waitlist offers: time-bounded offers and expiry are not implemented.
-- Credit balance concurrency: entitlement checks occur before credit consumption; concurrent bookings may overspend without DB-level locking.
+- High-contention scenarios may still require explicit row-level locking or queue-based promotion workers.

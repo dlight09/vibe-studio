@@ -2,16 +2,16 @@
 
 Document ID: VS-ARCH-MEMBERSHIP
 
-Version: 0.2
+Version: 0.3
 
 Status: Draft
 
-Last updated: 2026-02-05
+Last updated: 2026-03-28
 
 ## Goals
 
 - Allow bookings only for members with active unlimited access or available credits.
-- Support staff-managed, counter-based sales (no online payments).
+- Support staff-managed counter sales and optional Stripe online checkout.
 - Record financial and entitlement events with audit logging.
 
 ## Data Model
@@ -22,7 +22,7 @@ Last updated: 2026-02-05
 - Purchase
   - a sales record for a plan
 - Payment
-  - counter payment record (cash/card/comp/adjustment)
+  - counter payment record (cash/card/comp/adjustment) and Stripe card records
 - MemberSubscription
   - active unlimited memberships with start/end dates
 - CreditLedgerEntry
@@ -51,6 +51,7 @@ Last updated: 2026-02-05
 - Sell plan at counter: creates Purchase + Payment, then
   - UNLIMITED: creates MemberSubscription.
   - PACK/DROP_IN: creates CreditLedgerEntry (PURCHASE).
+- Stripe checkout: webhook (`checkout.session.completed`) creates Purchase + Payment + entitlement updates transactionally.
 - Adjust credits (admin only): writes CreditLedgerEntry with reason MANUAL_ADJUST.
 
 ## Audit Logging
@@ -64,6 +65,5 @@ Last updated: 2026-02-05
 
 ## Known Gaps (Production)
 
-- Credit balance checks occur before consumption; concurrent bookings may overspend without DB-level locking.
 - No idempotency keys for counter sales.
 - No automated expiry cleanup job for old credit entries.
