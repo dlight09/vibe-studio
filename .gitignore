@@ -9,3 +9,4 @@ dist
 *.DS_Store
 devserver.pid
 tsconfig.tsbuildinfo
+.vercel
